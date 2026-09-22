@@ -14,11 +14,12 @@ def clean_dataframe_columns(df):
     return df
 
 def add_sequence_index(df):
-    """Groups data by Date/Day and creates a sequential order index (0, 1, 2...) for perfect alignment."""
-    date_col = 'Test time (date)' if 'Test time (date)' in df.columns else 'Test time'
-    if date_col in df.columns:
-        df['Daily_Sequence_Order'] = df.groupby(['week No.', 'Day No.', date_col]).cumcount()
-        df.rename(columns={date_col: 'Test_Time'}, inplace=True)
+    """
+    Groups data by Date/Day and creates a sequential order index (0, 1, 2...)
+    based on your exact columns: 'Week No.', 'Day No.', and 'Test Time'.
+    """
+    if 'Test Time' in df.columns and 'Week No.' in df.columns and 'Day No.' in df.columns:
+        df['Daily_Sequence_Order'] = df.groupby(['Week No.', 'Day No.', 'Test Time']).cumcount()
     return df
 
 def process_sugar_iq_workbook(file_path):
@@ -33,18 +34,17 @@ def process_sugar_iq_workbook(file_path):
             for sheet in actual_sheets:
                 if kw in sheet.lower():
                     return sheet
-            # If keyword is not found, return the fallback positional sheet name
             return actual_sheets[fallback_index]
 
-        # Smart keyword matching to completely bypass spelling errors
-        nutsch_sheet = find_sheet_by_keyword("nutsch", 4)      # Looks for 'nutsch'
-        composite_sheet = find_sheet_by_keyword("compos", 5)   # Looks for 'composite' or 'compos'
-        m1_sheet = find_sheet_by_keyword("1", 0)               # Looks for machine '1'
-        m2_sheet = find_sheet_by_keyword("2", 1)               # Looks for machine '2'
-        m3_sheet = find_sheet_by_keyword("3", 2)               # Looks for machine '3'
-        m4_sheet = find_sheet_by_keyword("4", 3)               # Looks for machine '4'
+        # Smart keyword matching to locate your tabs flexibly
+        nutsch_sheet = find_sheet_by_keyword("nutsch", 2)      
+        composite_sheet = find_sheet_by_keyword("hour", 1)   
+        m1_sheet = find_sheet_by_keyword("no 1", 0)               
+        m2_sheet = find_sheet_by_keyword("no 2", 0)               
+        m3_sheet = find_sheet_by_keyword("no 3", 0)               
+        m4_sheet = find_sheet_by_keyword("no 4", 0)               
 
-        # Load sheets dynamically
+        # Load and index data sheets matching your exact column names
         nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet)))
         composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet)))
         
@@ -53,23 +53,25 @@ def process_sugar_iq_workbook(file_path):
         m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
         m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet)))
                 
-        # Isolate baseline parameters
-        nutsch_base = nutsch_df[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
-        comp_base = composite_df[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Overall_FMP'})
+        # Isolate baseline parameters matching your precise casing
+        nutsch_base = nutsch_df[['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
+        comp_base = composite_df[['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Overall_FMP'})
         
-        # Merge tracking structure
-        master = pd.merge(nutsch_base, comp_base, on=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order'], how='outer')
+        # Merge key columns frame
+        master = pd.merge(nutsch_base, comp_base, on=['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order'], how='outer')
         
         # Loop through machines using multi-index tracking
         machines = {'M1': m1_df, 'M2': m2_df, 'M3': m3_df, 'M4': m4_df}
         for code, mdf in machines.items():
-            m_sub = mdf[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(
+            m_sub = mdf[['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(
                 columns={'Purity Nirs': f'{code}_Pur', 'Brix Nirs': f'{code}_Brix'}
             )
-            master = pd.merge(master, m_sub, on=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order'], how='left')
+            master = pd.merge(master, m_sub, on=['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order'], how='left')
+            
+            # Dynamic calculation matching your process logic
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
             
-        master = master.sort_values(by=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order']).reset_index(drop=True)
+        master = master.sort_values(by=['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order']).reset_index(drop=True)
         return master, None
     except Exception as e:
         return None, str(e)
@@ -87,7 +89,7 @@ except FileNotFoundError:
 # Isolate latest recorded laboratory entries
 latest_valid_row = df.dropna(subset=['Overall_FMP']).iloc[-1]
 current_fmp = latest_valid_row['Overall_FMP']
-current_week = int(latest_valid_row['week No.'])
+current_week = int(latest_valid_row['Week No.'])
 
 # --- 2. STATION-WIDE GLOBAL ANALYSIS LAYER (UPSTREAM INSPECTION) ---
 possible_machines = ['M1', 'M2', 'M3', 'M4']
@@ -134,7 +136,7 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             X_time = np.array(range(len(m_history))).reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values
             reg = LinearRegression().fit(X_time, y_rise)
-            drift_velocity = reg.coef_[0]
+            drift_velocity = reg.coef_
         else:
             drift_velocity = 0.0
             
@@ -158,3 +160,4 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
                     st.success(f"✅ Performance Stable\nEst. screen life remaining: {runs_until_breach:.1f} analyses.")
             else:
                 st.success("✅ Performance Stable\nNo upward degradation drift detected.")
+
