@@ -27,14 +27,35 @@ def add_sequence_index(df):
 
 def process_sugar_iq_workbook(file_path):
     try:
-        # Load sheets exactly matching your real sheet names
-        nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C massecuite curing Nutsch")))
-        composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="final molasses 2 hours composite")))
+        # Load the Excel workbook structure to find actual sheet names
+        xl = pd.ExcelFile(file_path)
+        sheet_names = xl.sheet_names
         
-        m1_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine no 1")))
-        m2_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine No 2")))
-        m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine No 3")))
-        m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine number 4")))
+        def find_sheet_flexibly(target_name):
+            """Finds a sheet name ignoring trailing spaces and letter casing mismatch."""
+            target_clean = str(target_name).strip().lower()
+            for sheet in sheet_names:
+                if sheet.strip().lower() == target_clean:
+                    return sheet
+            # Fallback exact check if no match found
+            return target_name
+
+        # Dynamically discover the correct sheets from your file
+        nutsch_sheet = find_sheet_flexibly("C massecuite curing Nutsch")
+        composite_sheet = find_sheet_flexibly("final molasses 2 hours composite")
+        m1_sheet = find_sheet_flexibly("C molasses machine no 1")
+        m2_sheet = find_sheet_flexibly("C molasses machine No 2")
+        m3_sheet = find_sheet_flexibly("C molasses machine No 3")
+        m4_sheet = find_sheet_flexibly("C molasses machine number 4")
+
+        # Load sheets using the dynamically discovered flexible names
+        nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet)))
+        composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet)))
+        
+        m1_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet)))
+        m2_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m2_sheet)))
+        m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
+        m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet)))
                 
         # Isolate the essential baseline values
         nutsch_base = nutsch_df[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
@@ -58,6 +79,7 @@ def process_sugar_iq_workbook(file_path):
         return master, None
     except Exception as e:
         return None, str(e)
+
 
 # --- AUTOMATED DATA LOADING LAYER ---
 try:
