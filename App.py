@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,10 +9,6 @@ st.set_page_config(page_title="Sugar IQ Control Panel", layout="wide")
 st.title("Sugar IQ: C-Centrifugal Predictive Analyzer")
 st.markdown("Target Overall Final Molasses Purity: **37%** | Individual Machine Target Purity Rise: **2.0 Units**")
 
-# 1. SIDEBAR: Excel File Provisioning
-st.sidebar.header("📁 Data Provisioning Panel")
-uploaded_file = st.sidebar.file_uploader("Upload Multi-Sheet Factory Excel Log (.xlsx)", type=["xlsx"])
-
 def clean_dataframe_columns(df):
     """Trims trailing spaces from column names to prevent alignment errors."""
     df.columns = [str(c).strip() for c in df.columns]
@@ -19,27 +16,25 @@ def clean_dataframe_columns(df):
 
 def add_sequence_index(df):
     """
-    Groups data by Date/Day and creates a sequential order index (0, 1, 2...)
+    Groups data by Date and creates a sequential order index (0, 1, 2...)
     for multiple daily analyses to ensure perfect row-by-row chronological matching.
     """
-    # Use 'Test time (date)' if present, otherwise fallback to 'Test time'
     date_col = 'Test time (date)' if 'Test time (date)' in df.columns else 'Test time'
     if date_col in df.columns:
-        # Create an order index based on the sequence of information for that specific date
         df['Daily_Sequence_Order'] = df.groupby(['week No.', 'Day No.', date_col]).cumcount()
         df.rename(columns={date_col: 'Test_Time'}, inplace=True)
     return df
 
-def process_sugar_iq_workbook(file):
+def process_sugar_iq_workbook(file_path):
     try:
         # Load sheets exactly matching your real sheet names
-        nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file, sheet_name="C massecuite curing Nutsch")))
-        composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file, sheet_name="final molasses 2 hours composite")))
+        nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C massecuite curing Nutsch")))
+        composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="final molasses 2 hours composite")))
         
-        m1_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file, sheet_name="C molasses machine no 1")))
-        m2_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file, sheet_name="C molasses machine No 2")))
-        m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file, sheet_name="C molasses machine No 3")))
-        m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file, sheet_name="C molasses machine number 4")))
+        m1_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine no 1")))
+        m2_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine No 2")))
+        m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine No 3")))
+        m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name="C molasses machine number 4")))
                 
         # Isolate the essential baseline values
         nutsch_base = nutsch_df[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
@@ -56,7 +51,7 @@ def process_sugar_iq_workbook(file):
             )
             master = pd.merge(master, m_sub, on=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order'], how='left')
             
-            # THE CORE CALCULATION: Machine Purity Nirs minus Nutsch Baseline Purity Nirs
+            # CORE CALCULATION: Machine Purity Nirs minus Nutsch Baseline Purity Nirs
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
             
         master = master.sort_values(by=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order']).reset_index(drop=True)
@@ -64,36 +59,50 @@ def process_sugar_iq_workbook(file):
     except Exception as e:
         return None, str(e)
 
-# Check deployment state
-if uploaded_file is not None:
-    df, error_msg = process_sugar_iq_workbook(uploaded_file)
+# --- AUTOMATED DATA LOADING LAYER ---
+try:
+    df, error_msg = process_sugar_iq_workbook("factory_data.xlsx")
     if error_msg:
-        st.error(f"❌ Structural error reading sheets. Please check names. Details: {error_msg}")
+        st.error(f"❌ Structural error reading repo file. Details: {error_msg}")
         st.stop()
-    st.sidebar.success("✅ Factory dataset successfully compiled and synced!")
-else:
-    st.sidebar.warning("Awaiting Excel log upload via sidebar to initialize calculations.")
-    st.info("💡 **Presentation Tip:** Upload your real 22-week workbook during the meeting to show live processing.")
+except FileNotFoundError:
+    st.error("❌ Data Source Missing: Please ensure 'factory_data.xlsx' is uploaded directly to your GitHub repository root.")
     st.stop()
 
-# --- 2. EXECUTIVE CORE VISUALIZATION LAYER ---
 # Isolate latest recorded laboratory entries
 latest_valid_row = df.dropna(subset=['Overall_FMP']).iloc[-1]
 current_fmp = latest_valid_row['Overall_FMP']
 current_week = int(latest_valid_row['week No.'])
 
-# Top KPI Summary Cards
+# --- 2. STATION-WIDE GLOBAL ANALYSIS LAYER (UPSTREAM INSPECTION) ---
+# Identify which machines are online right now
+possible_machines = ['M1', 'M2', 'M3', 'M4']
+active_on_floor = [m for m in possible_machines if not pd.isna(latest_valid_row[f'{m}_Rise'])]
+
+# Check if ALL operational active machines have broken the 2.0 purity rise barrier
+all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor)
+
+if all_active_high and len(active_on_floor) > 0:
+    st.error(
+        f"🚨 **GLOBAL STATION CRITICAL ALERT: CRITICAL PROCESS DRIFT DETECTED**\n\n"
+        f"**Diagnosis:** All {len(active_on_floor)} currently running centrifugals are showing an excessive purity rise simultaneously. "
+        f"This mathematically isolates the fault away from individual screens or localized water leakage.\n\n"
+        f"👉 **Immediate Action Plan:** Notify the Boiling House Foreman to run a comprehensive **analysis of the C-massecuite quality**. "
+        f"Check for poor reheater heat-exchange performance (viscosity spike), or inspect the vacuum pan logs for active **false grain presence**."
+    )
+    st.markdown("---")
+
+# --- 3. EXECUTIVE CORE VISUALIZATION LAYER ---
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
     st.metric(label="Current Composite FMP", value=f"{current_fmp:.2f} %", delta=f"{current_fmp - 37.0:+.2f} % vs Target 37%")
 with kpi2:
-    active_units = [m for m in ['M1', 'M2', 'M3', 'M4'] if not pd.isna(latest_valid_row[f'{m}_Rise'])]
-    st.metric(label="Active Centrifugals", value=f"{len(active_units)} / 4 Online", 
-              delta="C-BMA 2 Breakdown Active" if 'M2' not in active_units else "All Units Synchronized")
+    st.metric(label="Active Centrifugals", value=f"{len(active_on_floor)} / 4 Online", 
+              delta="C-BMA 2 Prolonged Breakdown Active" if 'M2' not in active_on_floor else "All Units Synchronized")
 with kpi3:
-    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22", delta="Historical Sequence Tracking Active")
+    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22", delta="Sequential Micro-Row Tracking Active")
 
-# --- 3. PROGNOSTIC & PRESCRIPTIVE ENGINE ---
+# --- 4. PROGNOSTIC & PRESCRIPTIVE ENGINE ---
 st.markdown("### 🔮 Predictive Performance & Prescriptive Actions")
 machine_cards = st.columns(4)
 config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'}
@@ -123,13 +132,15 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
         st.metric(label="Calculated Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} units/analysis")
         st.text(f"Molasses Density: {m_brix:.1f}°Bx")
         
-        # Sugar Engineering Rule-Based Insights
+        # Individual Sugar Engineering Diagnostics (Only highlighted if global alert isn't overriding)
         if m_rise > 2.0:
             st.error("🚨 Threshold Breached (>2.0 Target)")
-            if m_brix < 82.0:
-                st.warning(f"👉 **Operator Insight:** Density is too low ({m_brix}°Bx). Hot wash water is melting sugar. Restrict manual valve timers immediately.")
+            if all_active_high:
+                st.caption("⚠️ See Global Upstream Massecuite Warning Above.")
+            elif m_brix < 82.0:
+                st.warning(f"👉 **Operator Insight:** Density too low ({m_brix}°Bx). Over-washing melting sugar. Restrict manual valve timer.")
             else:
-                st.warning(f"👉 **Foreman Insight:** Density is optimal ({m_brix}°Bx) but purity rise is high. Sugar is bypassing. Schedule immediate screen replacement.")
+                st.warning(f"👉 **Foreman Insight:** Density optimal ({m_brix}°Bx) but purity rise is high. Mechanical screen bypass. Inspect screens immediately.")
         else:
             if drift_velocity > 0:
                 runs_until_breach = (2.0 - m_rise) / drift_velocity
