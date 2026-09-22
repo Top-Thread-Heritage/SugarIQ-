@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -15,10 +14,7 @@ def clean_dataframe_columns(df):
     return df
 
 def add_sequence_index(df):
-    """
-    Groups data by Date and creates a sequential order index (0, 1, 2...)
-    for multiple daily analyses to ensure perfect row-by-row chronological matching.
-    """
+    """Groups data by Date/Day and creates a sequential order index (0, 1, 2...) for perfect alignment."""
     date_col = 'Test time (date)' if 'Test time (date)' in df.columns else 'Test time'
     if date_col in df.columns:
         df['Daily_Sequence_Order'] = df.groupby(['week No.', 'Day No.', date_col]).cumcount()
@@ -27,28 +23,28 @@ def add_sequence_index(df):
 
 def process_sugar_iq_workbook(file_path):
     try:
-        # Load the Excel workbook structure to find actual sheet names
+        # Read the actual sheets that exist inside the uploaded workbook
         xl = pd.ExcelFile(file_path)
-        sheet_names = xl.sheet_names
+        actual_sheets = xl.sheet_names
         
-        def find_sheet_flexibly(target_name):
-            """Finds a sheet name ignoring trailing spaces and letter casing mismatch."""
-            target_clean = str(target_name).strip().lower()
-            for sheet in sheet_names:
-                if sheet.strip().lower() == target_clean:
+        def find_sheet_by_keyword(keyword, fallback_index=0):
+            """Scans all sheet names in the Excel file and matches based on a keyword search."""
+            kw = str(keyword).lower().strip()
+            for sheet in actual_sheets:
+                if kw in sheet.lower():
                     return sheet
-            # Fallback exact check if no match found
-            return target_name
+            # If keyword is not found, return the fallback positional sheet name
+            return actual_sheets[fallback_index]
 
-        # Dynamically discover the correct sheets from your file
-        nutsch_sheet = find_sheet_flexibly("C massecuite curing Nutsch")
-        composite_sheet = find_sheet_flexibly("final molasses 2 hours composite")
-        m1_sheet = find_sheet_flexibly("C molasses machine no 1")
-        m2_sheet = find_sheet_flexibly("C molasses machine No 2")
-        m3_sheet = find_sheet_flexibly("C molasses machine No 3")
-        m4_sheet = find_sheet_flexibly("C molasses machine number 4")
+        # Smart keyword matching to completely bypass spelling errors
+        nutsch_sheet = find_sheet_by_keyword("nutsch", 4)      # Looks for 'nutsch'
+        composite_sheet = find_sheet_by_keyword("compos", 5)   # Looks for 'composite' or 'compos'
+        m1_sheet = find_sheet_by_keyword("1", 0)               # Looks for machine '1'
+        m2_sheet = find_sheet_by_keyword("2", 1)               # Looks for machine '2'
+        m3_sheet = find_sheet_by_keyword("3", 2)               # Looks for machine '3'
+        m4_sheet = find_sheet_by_keyword("4", 3)               # Looks for machine '4'
 
-        # Load sheets using the dynamically discovered flexible names
+        # Load sheets dynamically
         nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet)))
         composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet)))
         
@@ -57,29 +53,26 @@ def process_sugar_iq_workbook(file_path):
         m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
         m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet)))
                 
-        # Isolate the essential baseline values
+        # Isolate baseline parameters
         nutsch_base = nutsch_df[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_base = composite_df[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Overall_FMP'})
         
-        # Build master base frame linking time blocks and test sequences together
+        # Merge tracking structure
         master = pd.merge(nutsch_base, comp_base, on=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order'], how='outer')
         
-        # Loop through each machine using both Date AND Sequence Order for alignment
+        # Loop through machines using multi-index tracking
         machines = {'M1': m1_df, 'M2': m2_df, 'M3': m3_df, 'M4': m4_df}
         for code, mdf in machines.items():
             m_sub = mdf[['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(
                 columns={'Purity Nirs': f'{code}_Pur', 'Brix Nirs': f'{code}_Brix'}
             )
             master = pd.merge(master, m_sub, on=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order'], how='left')
-            
-            # CORE CALCULATION: Machine Purity Nirs minus Nutsch Baseline Purity Nirs
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
             
         master = master.sort_values(by=['week No.', 'Day No.', 'Test_Time', 'Daily_Sequence_Order']).reset_index(drop=True)
         return master, None
     except Exception as e:
         return None, str(e)
-
 
 # --- AUTOMATED DATA LOADING LAYER ---
 try:
@@ -97,20 +90,17 @@ current_fmp = latest_valid_row['Overall_FMP']
 current_week = int(latest_valid_row['week No.'])
 
 # --- 2. STATION-WIDE GLOBAL ANALYSIS LAYER (UPSTREAM INSPECTION) ---
-# Identify which machines are online right now
 possible_machines = ['M1', 'M2', 'M3', 'M4']
 active_on_floor = [m for m in possible_machines if not pd.isna(latest_valid_row[f'{m}_Rise'])]
+all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
-# Check if ALL operational active machines have broken the 2.0 purity rise barrier
-all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor)
-
-if all_active_high and len(active_on_floor) > 0:
+if all_active_high:
     st.error(
-        f"🚨 **GLOBAL STATION CRITICAL ALERT: CRITICAL PROCESS DRIFT DETECTED**\n\n"
-        f"**Diagnosis:** All {len(active_on_floor)} currently running centrifugals are showing an excessive purity rise simultaneously. "
-        f"This mathematically isolates the fault away from individual screens or localized water leakage.\n\n"
-        f"👉 **Immediate Action Plan:** Notify the Boiling House Foreman to run a comprehensive **analysis of the C-massecuite quality**. "
-        f"Check for poor reheater heat-exchange performance (viscosity spike), or inspect the vacuum pan logs for active **false grain presence**."
+        f"🚨 **GLOBAL STATION CRITICAL ALERT: PROCESS DRIFT DETECTED**\n\n"
+        f"**Diagnosis:** All currently running centrifugals are showing an excessive purity rise simultaneously. "
+        f"This isolates the fault away from individual screens or localized water leakage.\n\n"
+        f"👉 **Immediate Action Plan:** Notify the Boiling House Foreman to check **C-massecuite quality**. "
+        f"Inspect the C-crystallizer reheater performance or pan logs for active **false grain presence**."
     )
     st.markdown("---")
 
@@ -122,7 +112,7 @@ with kpi2:
     st.metric(label="Active Centrifugals", value=f"{len(active_on_floor)} / 4 Online", 
               delta="C-BMA 2 Prolonged Breakdown Active" if 'M2' not in active_on_floor else "All Units Synchronized")
 with kpi3:
-    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22", delta="Sequential Micro-Row Tracking Active")
+    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22", delta="Automated Keyphrase Mapping Active")
 
 # --- 4. PROGNOSTIC & PRESCRIPTIVE ENGINE ---
 st.markdown("### 🔮 Predictive Performance & Prescriptive Actions")
@@ -132,29 +122,25 @@ config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'
 for idx, (m_name, m_code) in enumerate(config_map.items()):
     with machine_cards[idx]:
         st.subheader(m_name)
-        
-        # Dynamic breakdown resilience check for C-BMA 2 stopping at Week 10
         if pd.isna(latest_valid_row[f'{m_code}_Rise']):
-            st.error("❌ MACHINE OFFLINE\n\nStatus: Prolonged breakdown logged. Station data loop automatically bypassed to prevent skewing averages.")
+            st.error("❌ MACHINE OFFLINE\n\nStatus: Prolonged breakdown logged. Station data loop automatically bypassed.")
             continue
             
         m_rise = latest_valid_row[f'{m_code}_Rise']
         m_brix = latest_valid_row[f'{m_code}_Brix']
         
-        # Calculate time-series linear regression drift over historical data rows
         m_history = df.dropna(subset=[f'{m_code}_Rise'])
         if len(m_history) >= 4:
             X_time = np.array(range(len(m_history))).reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values
             reg = LinearRegression().fit(X_time, y_rise)
-            drift_velocity = reg.coef_
+            drift_velocity = reg.coef_[0]
         else:
             drift_velocity = 0.0
             
         st.metric(label="Calculated Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} units/analysis")
         st.text(f"Molasses Density: {m_brix:.1f}°Bx")
         
-        # Individual Sugar Engineering Diagnostics (Only highlighted if global alert isn't overriding)
         if m_rise > 2.0:
             st.error("🚨 Threshold Breached (>2.0 Target)")
             if all_active_high:
