@@ -62,6 +62,7 @@ def process_sugar_iq_workbook(file_path):
         m3_sheet = find_sheet_by_keyword("no 3", 2)               
         m4_sheet = find_sheet_by_keyword("number 4", 3)               
 
+        # Load sheets cleanly
         nutsch_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet))
         composite_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet))
         m1_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet))
@@ -69,6 +70,7 @@ def process_sugar_iq_workbook(file_path):
         m3_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet))
         m4_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet))
         
+        # Enforce clean numbers on structural sorting variables
         for frame in [nutsch_df, composite_df, m1_df, m2_df, m3_df, m4_df]:
             frame['Week No.'] = force_numeric(frame['Week No.'])
             frame['Day No.'] = force_numeric(frame['Day No.'])
@@ -77,6 +79,7 @@ def process_sugar_iq_workbook(file_path):
             if 'Brix Nirs' in frame.columns:
                 frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
 
+        # Aggregate averages by Week and Day safely
         nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
         
@@ -164,11 +167,14 @@ if len(m1_history) >= 2:
 
 st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != -0.005 else None)
 st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
-if m1_rise > 2.0: st.error("🚨 C-BMA 1 Threshold Breached")
-if m1_rise > 2.0 and m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator (M1):** Over-washing melting sugar. Taper manual water valves.")
-if m1_rise > 2.0 and not (m1_brix < 82.0 and m1_brix > 0): st.warning("👉 **Foreman (M1):** Mechanical screen bypass. Inspect screens immediately.")
-if not (m1_rise > 2.0) and drift_m1 > 0: st.warning(f"⚠️ C-BMA 1 Life Remaining: {((2.0 - m1_rise) / drift_m1):.1f} steps.")
-if not (m1_rise > 2.0) and not (drift_m1 > 0): st.success("✅ C-BMA 1 Performance Stable")
+
+# Unconditional recommendations display
+if m1_rise > 2.0:
+    st.error("🚨 C-BMA 1 Threshold Breached")
+    st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
+    st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
+else:
+    st.success("✅ C-BMA 1 Performance Stable")
 
 m1_hist_arr = [np.nan] * len(chart_index_flat)
 m1_pred_arr = [np.nan] * len(chart_index_flat)
@@ -212,4 +218,8 @@ if len(m3_history) >= 2:
 
 st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != -0.005 else None)
 st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
-if m3_rise > 2.0: st.error("🚨 C-BMA 3 Threshold Breached")
+
+# Unconditional recommendations display
+if m3_rise > 2.0:
+    st.error("🚨 C-BMA 3 Threshold Breached")
+    st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
