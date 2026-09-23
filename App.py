@@ -62,7 +62,6 @@ def process_sugar_iq_workbook(file_path):
         m3_sheet = find_sheet_by_keyword("no 3", 2)               
         m4_sheet = find_sheet_by_keyword("number 4", 3)               
 
-        # Load sheets cleanly
         nutsch_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet))
         composite_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet))
         m1_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet))
@@ -70,16 +69,12 @@ def process_sugar_iq_workbook(file_path):
         m3_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet))
         m4_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet))
         
-        # Enforce clean numbers on structural sorting variables
         for frame in [nutsch_df, composite_df, m1_df, m2_df, m3_df, m4_df]:
             frame['Week No.'] = force_numeric(frame['Week No.'])
             frame['Day No.'] = force_numeric(frame['Day No.'])
-            if 'Purity Nirs' in frame.columns:
-                frame['Purity Nirs'] = force_numeric(frame['Purity Nirs'])
-            if 'Brix Nirs' in frame.columns:
-                frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
+            if 'Purity Nirs' in frame.columns: frame['Purity Nirs'] = force_numeric(frame['Purity Nirs'])
+            if 'Brix Nirs' in frame.columns: frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
 
-        # Aggregate averages by Week and Day safely
         nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
         
@@ -100,7 +95,6 @@ def process_sugar_iq_workbook(file_path):
 
 # --- DATA LOADING LOOP ---
 df, error_msg = process_sugar_iq_workbook("factory_data.xlsx")
-
 if error_msg:
     st.error(f"❌ Core processing error: {error_msg}")
     st.stop()
@@ -131,92 +125,90 @@ if all_active_high:
     st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
     st.warning("**Diagnosis:** All running centrifugals show an excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or crystallizer reheater settings rather than local screen damage.")
     st.info(f"🏆 **Worst Performing Unit:** {worst_machine_name} is struggling the most with a purity rise of **{max_purity_rise:.2f} units**.")
+    st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
-with kpi1:
-    st.metric(label="Current Overall FMP", value=f"{current_fmp:.2f} %")
-with kpi2:
-    st.metric(label="Active Centrifugals", value=f"{len(active_on_floor)} / 4 Online")
-with kpi3:
-    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22")
+with kpi1: st.metric(label="Current Overall FMP", value=f"{current_fmp:.2f} %")
+with kpi2: st.metric(label="Active Centrifugals", value=f"{len(active_on_floor)} / 4 Online")
+with kpi3: st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22")
 
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 
-chart_index_flat = list(range(1, len(df) + 6))
-chart_output = pd.DataFrame(index=chart_index_flat)
+# --- INITIALIZE CHART DICTIONARY CLEANLY (ZERO ROWS LOOPS) ---
+chart_data = pd.DataFrame(index=df['Timeline_Step'])
 
-reg_m1, reg_m3, reg_m4 = None, None, None
-
-# --- C-BMA 1 ---
+# --- C-BMA 1 PROCESSING ---
 st.markdown("#### **C-BMA 1**")
-m1_rise_val = latest_valid_row['M1_Rise'] if 'M1_Rise' in latest_valid_row else np.nan
-m1_brix_val = latest_valid_row['M1_Brix'] if 'M1_Brix' in latest_valid_row else np.nan
-m1_history = df.dropna(subset=['M1_Rise', 'Timeline_Step']).copy()
+m1_rise = float(latest_valid_row['M1_Rise']) if pd.notna(latest_valid_row['M1_Rise']) else 0.0
+m1_brix = float(latest_valid_row['M1_Brix']) if pd.notna(latest_valid_row['M1_Brix']) else 0.0
+drift_m1 = 0.002
+try:
+    m1_history = df.dropna(subset=['M1_Rise']).copy()
+    reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
+    drift_m1 = float(reg_m1.coef_)
+except:
+    pass
 
-m1_rise = float(m1_rise_val) if pd.notna(m1_rise_val) else 0.0
-m1_brix = float(m1_brix_val) if pd.notna(m1_brix_val) else 0.0
-
-drift_m1 = -0.005
-if len(m1_history) >= 2:
-    try:
-        reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
-        drift_m1 = float(reg_m1.coef_)
-    except:
-        pass
-
-st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != -0.005 else None)
+st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
 st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
-
 if m1_rise > 2.0:
     st.error("🚨 C-BMA 1 Threshold Breached")
     st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
     st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
-else:
-    st.success("✅ C-BMA 1 Performance Stable")
+else: st.success("✅ C-BMA 1 Performance Stable")
 
-m1_hist_arr = [np.nan] * len(chart_index_flat)
-m1_pred_arr = [np.nan] * len(chart_index_flat)
-for idx_r, row_r in df.iterrows():
-    m1_hist_arr[int(row_r['Timeline_Step']) - 1] = float(row_r['M1_Rise']) if pd.notna(row_r['M1_Rise']) else np.nan
-if reg_m1 is not None and pd.notna(m1_hist_arr[len(df) - 1]):
-    try:
-        m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
-        for fs in list(range(len(df) + 1, len(df) + 6)):
-            m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))))
-    except:
-        pass
-chart_output['C-BMA 1 (History)'] = m1_hist_arr
-chart_output['C-BMA 1 (ML Projection)'] = m1_pred_arr
+chart_data['C-BMA 1 (History)'] = df['M1_Rise'].values
+try:
+    pred_m1 = [np.nan] * (len(df) + 5)
+    pred_m1[len(df)-1] = df['M1_Rise'].values[-1]
+    for step in range(len(df) + 1, len(df) + 6):
+        pred_m1[step-1] = max(0.0, float(reg_m1.predict([[step]])))
+except: pass
 
-# --- C-BMA 2 ---
+st.markdown("---")
 st.markdown("#### **C-BMA 2**")
 st.error("❌ MACHINE OFFLINE")
 st.caption("Status: Prolonged breakdown logged.")
 
-# --- C-BMA 3 ---
+# --- C-BMA 3 PROCESSING ---
+st.markdown("---")
 st.markdown("#### **C-BMA 3**")
-m3_rise_val = latest_valid_row['M3_Rise'] if 'M3_Rise' in latest_valid_row else np.nan
-m3_brix_val = latest_valid_row['M3_Brix'] if 'M3_Brix' in latest_valid_row else np.nan
-m3_history = df.dropna(subset=['M3_Rise', 'Timeline_Step']).copy()
+m3_rise = float(latest_valid_row['M3_Rise']) if pd.notna(latest_valid_row['M3_Rise']) else 0.0
+m3_brix = float(latest_valid_row['M3_Brix']) if pd.notna(latest_valid_row['M3_Brix']) else 0.0
+drift_m3 = 0.002
+try:
+    m3_history = df.dropna(subset=['M3_Rise']).copy()
+    reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
+    drift_m3 = float(reg_m3.coef_)
+except:
+    pass
 
-m3_rise = float(m3_rise_val) if pd.notna(m3_rise_val) else 0.0
-m3_brix = float(m3_brix_val) if pd.notna(m3_brix_val) else 0.0
-
-drift_m3 = -0.005
-if len(m3_history) >= 2:
-    try:
-        reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
-        drift_m3 = float(reg_m3.coef_)
-    except:
-        pass
-
-st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != -0.005 else None)
+st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
 st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
-
 if m3_rise > 2.0:
     st.error("🚨 C-BMA 3 Threshold Breached")
     st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
     st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
-else:
-    st.success("✅ C-BMA 3 Performance Stable")
+else: st.success("✅ C-BMA 3 Performance Stable")
+
+chart_data['C-BMA 3 (History)'] = df['M3_Rise'].values
+try:
+    pred_m3 = [np.nan] * (len(df) + 5)
+    pred_m3[len(df)-1] = df['M3_Rise'].values[-1]
+    for step in range(len(df) + 1, len(df) + 6):
+        pred_m3[step-1] = max(0.0, float(reg_m3.predict([[step]])))
+except: pass
+
+# --- C-BMA 4 PROCESSING ---
+st.markdown("---")
+st.markdown("#### **C-BMA 4**")
+m4_rise = float(latest_valid_row['M4_Rise']) if pd.notna(latest_valid_row['M4_Rise']) else 0.0
+m4_brix = float(latest_valid_row['M4_Brix']) if pd.notna(latest_valid_row['M4_Brix']) else 0.0
+drift_m4 = 0.002
+try:
+    m4_history = df.dropna(subset=['M4_Rise']).copy()
+    reg_m4 = LinearRegression().fit(m4_history['Timeline_Step'].values.reshape(-1, 1), m4_history['M4_Rise'].values.reshape(-1, 1))
+    drift_m4 = float(reg_m4.coef_)
+except:
+    pass
 
