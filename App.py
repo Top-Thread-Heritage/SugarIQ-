@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LinearRegression
 
 # Page Configuration for Mobile Viewports
 st.set_page_config(page_title="Sugar IQ Control Panel", layout="wide")
@@ -106,9 +105,9 @@ df = df.dropna(subset=['Week No.']).copy()
 df['Timeline_Step'] = np.arange(len(df)) + 1
 
 # Safe variables isolation
-v_m1 = df.dropna(subset=['M1_Rise', 'Week No.'])
-v_m3 = df.dropna(subset=['M3_Rise', 'Week No.'])
-v_m4 = df.dropna(subset=['M4_Rise', 'Week No.'])
+v_m1 = df.dropna(subset=['M1_Rise'])
+v_m3 = df.dropna(subset=['M3_Rise'])
+v_m4 = df.dropna(subset=['M4_Rise'])
 v_comp = df.dropna(subset=['Overall_FMP'])
 
 current_fmp = float(v_comp.iloc[-1]['Overall_FMP']) if len(v_comp) > 0 else 37.0
@@ -191,16 +190,19 @@ else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
 
 # ============================================================================
-# --- UNIFIED BOARDROOM GRAPH: HISTORICAL TIMELINE + ML PROJECTIONS ---
+# --- INDESTRUCTIBLE UNIFIED PRESENATION TREND & PROJECTION ENGINE ---
 # ============================================================================
 st.markdown("### 📈 Machine Learning Projections & Long-Term Trend Analyzer")
 
-# 1. Aggregate our actual historical performance summary cleanly by Week
+# 1. Grab raw history grouped cleanly by factory week number
 hist_summary = df.groupby(['Week No.'])[['M1_Rise', 'M3_Rise', 'M4_Rise']].mean()
 
-# 2. Build the future timeline dataframe securely from Week 1 all the way out to Week 25
-full_weeks_index = list(range(1, 26))
-master_chart_df = pd.DataFrame(index=full_weeks_index)
+# 2. Pre-configure full timeline indexes from Week 1 to Week 25 flatly (Zero loop bugs)
+full_timeline_weeks = list(range(1, 26))
+master_chart_df = pd.DataFrame(index=full_timeline_weeks)
 
-# 3. Inject the actual 22-week solid line historical background vectors
+# 3. Securely map historical lines data arrays
 master_chart_df['C-BMA 1 (Actual History)'] = hist_summary['M1_Rise']
+master_chart_df['C-BMA 3 (Actual History)'] = hist_summary['M3_Rise']
+master_chart_df['C-BMA 4 (Actual History)'] = hist_summary['M4_Rise']
+
