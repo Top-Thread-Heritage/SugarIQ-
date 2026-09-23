@@ -105,7 +105,7 @@ if error_msg:
 df = df.dropna(subset=['Week No.']).copy()
 df['Timeline_Step'] = np.arange(len(df)) + 1
 
-# Safe fallback rows extraction
+# Safe variables isolation
 v_m1 = df.dropna(subset=['M1_Rise'])
 v_m3 = df.dropna(subset=['M3_Rise'])
 v_m4 = df.dropna(subset=['M4_Rise'])
@@ -114,7 +114,7 @@ v_comp = df.dropna(subset=['Overall_FMP'])
 current_fmp = float(v_comp.iloc[-1]['Overall_FMP']) if len(v_comp) > 0 else 37.0
 current_week = int(v_comp.iloc[-1]['Week No.']) if len(v_comp) > 0 else 22
 
-# Compute operational data states for Global Alerts validation parameters safely
+# Quick data metrics rendering
 m1_last_rise = float(v_m1.iloc[-1]['M1_Rise']) if len(v_m1) > 0 else 0.0
 m3_last_rise = float(v_m3.iloc[-1]['M3_Rise']) if len(v_m3) > 0 else 0.0
 m4_last_rise = float(v_m4.iloc[-1]['M4_Rise']) if len(v_m4) > 0 else 0.0
@@ -124,13 +124,12 @@ if len(v_m1) > 0: active_count += 1
 if len(v_m3) > 0: active_count += 1
 if len(v_m4) > 0: active_count += 1
 
-# --- 2. GLOBAL STATION CRITICAL ALERT (RE-INTEGRATED PROCESS ENGINE CHECK) ---
+# --- GLOBAL UPSTREAM STATION ALERT ---
 all_active_high = (m1_last_rise > 2.0) and (m3_last_rise > 2.0) and (m4_last_rise > 2.0)
-
 if all_active_high:
     st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
-    st.warning("**Diagnosis:** All running centrifugals are showing an excessive purity rise simultaneously. This mathematically isolates the process fault away from individual localized screen tears or manual water leakage.")
-    st.info("👉 **Immediate Action Plan:** Notify the Boiling House Foreman to inspect upstream **C-massecuite quality**. Check for poor heat-exchange performance inside the crystallizer reheaters (viscosity spike) or pan station logs for active **false grain presence**.")
+    st.warning("**Diagnosis:** All running centrifugals show an excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or crystallizer reheater configurations rather than local screen damage.")
+    st.info("👉 **Immediate Action Plan:** Notify the Boiling House Foreman to check **C-massecuite conditioning** inside reheaters or vacuum pan logs for active **false grain presence**.")
     st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
@@ -138,69 +137,69 @@ with kpi1: st.metric(label="Current Overall FMP", value=f"{current_fmp:.2f} %")
 with kpi2: st.metric(label="Active Centrifugals", value=f"{active_count} / 4 Online")
 with kpi3: st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22")
 
-st.markdown("### 🔮 Machine-Specific Predictive Analysis")
+st.markdown("### 🔮 Machine-Specific Real-Time Analysis")
 
-chart_index_flat = list(range(1, len(df) + 6))
-chart_output = pd.DataFrame(index=chart_index_flat)
-reg_m1, reg_m3, reg_m4 = None, None, None
-
-# --- C-BMA 1 ---
+# --- C-BMA 1 PANEL ---
 st.markdown("#### **C-BMA 1**")
 if len(v_m1) > 0:
-    row = v_m1.iloc[-1]
-    m1_rise = float(row['M1_Rise'])
-    m1_brix = float(row['M1_Brix']) if pd.notna(row['M1_Brix']) else 0.0
-    reg_m1 = LinearRegression().fit(v_m1['Timeline_Step'].values.reshape(-1, 1), v_m1['M1_Rise'].values.reshape(-1, 1))
-    drift_m1 = float(reg_m1.coef_)
-    st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
+    m1_rise = float(v_m1.iloc[-1]['M1_Rise'])
+    m1_brix = float(v_m1.iloc[-1]['M1_Brix']) if pd.notna(v_m1.iloc[-1]['M1_Brix']) else 0.0
+    st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units")
     st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
     if m1_rise > 2.0:
         st.error("🚨 C-BMA 1 Threshold Breached")
-        st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
-        st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
+        if m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
+        else: st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
     else: st.success("✅ C-BMA 1 Performance Stable")
 else: st.error("❌ C-BMA 1 DATA OFFLINE")
 
-# --- C-BMA 2 ---
+# --- C-BMA 2 PANEL ---
 st.markdown("---")
 st.markdown("#### **C-BMA 2**")
 st.error("❌ MACHINE OFFLINE")
 st.caption("Status: Prolonged breakdown logged.")
 
-# --- C-BMA 3 ---
+# --- C-BMA 3 PANEL ---
 st.markdown("---")
 st.markdown("#### **C-BMA 3**")
 if len(v_m3) > 0:
-    row = v_m3.iloc[-1]
-    m3_rise = float(row['M3_Rise'])
-    m3_brix = float(row['M3_Brix']) if pd.notna(row['M3_Brix']) else 0.0
-    reg_m3 = LinearRegression().fit(v_m3['Timeline_Step'].values.reshape(-1, 1), v_m3['M3_Rise'].values.reshape(-1, 1))
-    drift_m3 = float(reg_m3.coef_)
-    st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
+    m3_rise = float(v_m3.iloc[-1]['M3_Rise'])
+    m3_brix = float(v_m3.iloc[-1]['M3_Brix']) if pd.notna(v_m3.iloc[-1]['M3_Brix']) else 0.0
+    st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units")
     st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
     if m3_rise > 2.0:
         st.error("🚨 C-BMA 3 Threshold Breached")
-        st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
-        st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
+        if m3_brix < 82.0 and m3_brix > 0: st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
+        else: st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
     else: st.success("✅ C-BMA 3 Performance Stable")
 else: st.error("❌ C-BMA 3 DATA OFFLINE")
 
-# --- C-BMA 4 ---
+# --- C-BMA 4 PANEL ---
 st.markdown("---")
 st.markdown("#### **C-BMA 4**")
 if len(v_m4) > 0:
-    row = v_m4.iloc[-1]
-    m4_rise = float(row['M4_Rise'])
-    m4_brix = float(row['M4_Brix']) if pd.notna(row['M4_Brix']) else 0.0
-    reg_m4 = LinearRegression().fit(v_m4['Timeline_Step'].values.reshape(-1, 1), v_m4['M4_Rise'].values.reshape(-1, 1))
-    drift_m4 = float(reg_m4.coef_)
-    st.metric(label="C-BMA 4 Purity Rise", value=f"{m4_rise:.2f} units", delta=f"{drift_m4:+.3f} / shift" if drift_m4 != 0 else None)
+    m4_rise = float(v_m4.iloc[-1]['M4_Rise'])
+    m4_brix = float(v_m4.iloc[-1]['M4_Brix']) if pd.notna(v_m4.iloc[-1]['M4_Brix']) else 0.0
+    st.metric(label="C-BMA 4 Purity Rise", value=f"{m4_rise:.2f} units")
     st.text(f"Molasses Density: {m4_brix:.1f}°Bx")
     if m4_rise > 2.0:
         st.error("🚨 C-BMA 4 Threshold Breached")
-        st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
-        st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
+        if m4_brix < 82.0 and m4_brix > 0: st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
+        else: st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
     else: st.success("✅ C-BMA 4 Performance Stable")
 else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
-# --- MASTER CHART MATRIX PREPARATION ---
+# ============================================================================
+# --- CHART 1: STRICT 22-WEEK HISTORICAL RECOVERY TREND ENGINE ---
+# ============================================================================
+st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
+hist_output = pd.DataFrame(index=range(1, len(df)+1))
+hist_output['C-BMA 1 Actual Rise'] = df['M1_Rise'].values
+hist_output['C-BMA 3 Actual Rise'] = df['M3_Rise'].values
+hist_output['C-BMA 4 Actual Rise'] = df['M4_Rise'].values
+hist_output.index.name = 'Chronological Entry Step'
+st.line_chart(hist_output)
+
+# ============================================================================
+# --- CHART 2: ISOLATED PREDICITIVE EXTENSION TRAILS ENGINE ---
+# ============================================================================
