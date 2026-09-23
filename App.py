@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-# Page Configuration for Mobile and Desktop
+# Page Configuration for Mobile and Desktop Viewports
 st.set_page_config(page_title="Sugar IQ Control Panel", layout="wide")
 st.title("Sugar IQ: C-Centrifugal Predictive Analyzer")
 st.markdown("Target Overall Final Molasses Purity: **37%** | Individual Machine Target Purity Rise: **2.0 Units**")
@@ -63,6 +63,7 @@ def process_sugar_iq_workbook(file_path):
                     return sheet
             return actual_sheets[fallback_index]
 
+        # Smart keyword matching to locate your tabs flexibly
         nutsch_sheet = find_sheet_by_keyword("nutsch", 2)      
         composite_sheet = find_sheet_by_keyword("hour", 1)   
         m1_sheet = find_sheet_by_keyword("no 1", 0)               
@@ -123,7 +124,7 @@ latest_valid_row = valid_machine_rows.iloc[-1]
 current_fmp = latest_valid_row['Overall_FMP'] if not pd.isna(latest_valid_row['Overall_FMP']) else df.dropna(subset=['Overall_FMP']).iloc[-1]['Overall_FMP']
 current_week = int(latest_valid_row['Week No.'])
 
-# Mapping configurations
+# Corrected mapping configurations
 config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'}
 active_on_floor = [m_code for m_name, m_code in config_map.items() if not pd.isna(latest_valid_row[f'{m_code}_Rise'])]
 
@@ -137,7 +138,7 @@ for m_name, m_code in config_map.items():
             max_purity_rise = float(val)
             worst_machine_name = m_name
 
-# --- GLOBAL UPSTREAM WARNING ---
+# --- GLOBAL STATION ALERT ---
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
 if all_active_high:
@@ -181,8 +182,7 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             X_time = np.array(range(len(m_history))).reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
-            # Safe extraction of the regression array coefficient
-            drift_velocity = float(reg.coef_[0][0]) if isinstance(reg.coef_, np.ndarray) and reg.coef_.ndim > 1 else float(reg.coef_[0])
+            drift_velocity = float(reg.coef_[0][0]) if isinstance(reg.coef_, np.ndarray) and reg.coef_.ndim > 1 else float(reg.coef_[0]) if isinstance(reg.coef_, np.ndarray) else float(reg.coef_)
         else:
             drift_velocity = 0.0
             
@@ -203,5 +203,3 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
                 else:
                     st.success(f"✅ Stable\nLife: {runs_left:.1f} runs.")
             else:
-                st.success("✅ Stable\nNo degradation drift.")
-
