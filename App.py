@@ -98,7 +98,6 @@ def process_sugar_iq_workbook(file_path):
 df, error_msg = process_sugar_iq_workbook("factory_data.xlsx")
 
 valid_machine_rows = df.dropna(subset=['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise'], how='all').copy()
-# Create an automatic, guaranteed numerical index for smooth mathematical graphing
 valid_machine_rows['Timeline_Step'] = np.arange(len(valid_machine_rows)) + 1
 
 latest_valid_row = valid_machine_rows.iloc[-1]
@@ -120,7 +119,7 @@ for m_name, m_code in config_map.items():
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
 if all_active_high:
-    st.error(f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT**\\n\\nAll running centrifugals show high purity rise. Upstream issue: check C-massecuite conditioning or false grain.\\n\\n🏆 Worst Machine: **{worst_machine_name}** ({max_purity_rise:.2f} units).")
+    st.error(f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**\\n\\nAll running centrifugals show high purity rise. Fault isolated upstream to **C-massecuite quality** or reheater settings.\\n\\n🏆 Worst Machine: **{worst_machine_name}** ({max_purity_rise:.2f} units).")
     st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
@@ -134,7 +133,6 @@ with kpi3:
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 machine_cards = st.columns(4)
 
-# Dictionary to hold models built on our automatic timeline step counter
 models_dict = {}
 
 for idx, (m_name, m_code) in enumerate(config_map.items()):
@@ -142,12 +140,12 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
         st.subheader(m_name)
         if pd.isna(latest_valid_row[f'{m_code}_Rise']):
             st.error("❌ MACHINE OFFLINE")
+            st.caption("Status: Prolonged breakdown logged.")
             continue
             
         m_rise = float(latest_valid_row[f'{m_code}_Rise'])
         m_brix_val = float(latest_valid_row[f'{m_code}_Brix']) if pd.notna(latest_valid_row[f'{m_code}_Brix']) else 0.0
         
-        # Build clean history arrays
         m_history = valid_machine_rows.dropna(subset=[f'{m_code}_Rise']).copy()
         
         drift_velocity = 0.0
@@ -156,49 +154,55 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
             models_dict[m_code] = reg
-            drift_velocity = float(reg.coef_[0][0]) if hasattr(reg.coef_, "__getitem__") and hasattr(reg.coef_[0], "__getitem__") else float(reg.coef_[0]) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
             
-        st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / shift" if drift_velocity != 0 else None)
+            # Ultra-safe numpy array coefficient flattening protection
+            coef_raw = reg.coef_
+            if hasattr(coef_raw, "ndim") and coef_raw.ndim > 1:
+                drift_velocity = float(coef_raw[0][0])
+            elif hasattr(coef_raw, "__getitem__"):
+                drift_velocity = float(coef_raw[0])
+            else:
+                drift_velocity = float(coef_raw)
+            
+        st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / analysis" if drift_velocity != 0 else None)
         st.text(f"Molasses Density: {m_brix_val:.1f}°Bx")
         
-        if m_rise > 2.0:
+        # Flattened prescriptive diagnostics block
+        is_breached = m_rise > 2.0
+        is_low_brix = m_brix_val < 82.0 and m_brix_val > 0
+        
+        if is_breached:
             st.error("🚨 Threshold Breached")
-            if m_brix_val < 82.0 and m_brix_val > 0:
-                st.warning("👉 **Operator:** Over-washing melting sugar. Taper water valves.")
-            else:
-                st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens.")
-        else:
-            if drift_velocity > 0:
-                runs_left = (2.0 - m_rise) / drift_velocity
-                st.warning(f"⚠️ Life: {runs_left:.1f} shifts.")
-            else:
-                st.success("✅ Stable")
+        if is_breached and is_low_brix:
+            st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
+        if is_breached and not is_low_brix:
+            st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
+        if not is_breached and drift_velocity > 0:
+            runs_left = (2.0 - m_rise) / drift_velocity
+            st.warning(f"⚠️ Life Remaining: {runs_left:.1f} analyses.")
+        if not is_breached and not drift_velocity > 0:
+            st.success("✅ Performance Stable")
 
-# --- HISTORICAL & ML PROJECTION CHART SECTION ---
-st.markdown("### 📈 Machine Learning Projections & Trend Overviews")
+# --- HISTORICAL & ML GRAPH PROJECTIONS SECTION ---
+st.markdown("### 📈 Machine Learning Projections & Trend Overviews (Weeks 1-22 + Forecast)")
 
 total_historical_steps = len(valid_machine_rows)
-future_steps = [total_historical_steps + 1, total_historical_steps + 2, total_historical_steps + 3, total_historical_steps + 4, total_historical_steps + 5]
+# Define forward forecasting analysis steps
+future_steps = list(range(total_historical_steps + 1, total_historical_steps + 10))
+chart_index = list(range(1, total_historical_steps + 10))
 
-# Build clean mapping summary arrays
-chart_index = list(range(1, total_historical_steps + 6))
 chart_output = pd.DataFrame(index=chart_index)
 
 for m_name, m_code in config_map.items():
     hist_series = [np.nan] * len(chart_index)
     pred_series = [np.nan] * len(chart_index)
     
-    # Fill actual history data
-    for i, row in valid_machine_rows.iterrows():
+    # Map raw history points
+    for idx_row, row in valid_machine_rows.iterrows():
         step = int(row['Timeline_Step'])
         hist_series[step - 1] = float(row[f'{m_code}_Rise'])
         
-    # Fill prediction trend extrapolation line points
+    # Extrapolate 3-week predictive future trend line
     if m_code in models_dict:
-        # Snap the connection point to avoid graph gaps
+        # Prevent visual gap on the graph line
         pred_series[total_historical_steps - 1] = hist_series[total_historical_steps - 1]
-        for idx_fs, fs in enumerate(future_steps):
-            pred_val = float(models_dict[m_code].predict(np.array([[fs]])))
-            pred_series[fs - 1] = max(0.0, pred_val)
-            
-    chart_output[f'{m_name} (History)'] = hist_series
