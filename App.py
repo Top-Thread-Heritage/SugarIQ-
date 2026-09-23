@@ -13,23 +13,21 @@ def clean_dataframe_columns(df):
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
-def add_sequence_index(df):
+def add_positional_sequence_index(df):
     """
-    Groups data by Date/Day and creates a sequential order index (0, 1, 2...)
-    based on your exact columns: 'Week No.', 'Day No.', and 'Test Time'.
+    Creates a sequential order index based strictly on row positions 
+    for each Week and Day combination to bypass time-stamp text mismatches.
     """
-    if 'Test Time' in df.columns and 'Week No.' in df.columns and 'Day No.' in df.columns:
-        df['Daily_Sequence_Order'] = df.groupby(['Week No.', 'Day No.', 'Test Time']).cumcount()
+    if 'Week No.' in df.columns and 'Day No.' in df.columns:
+        df['Daily_Sequence_Order'] = df.groupby(['Week No.', 'Day No.']).cumcount()
     return df
 
 def process_sugar_iq_workbook(file_path):
     try:
-        # Read the actual sheets that exist inside the uploaded workbook
         xl = pd.ExcelFile(file_path)
         actual_sheets = xl.sheet_names
         
         def find_sheet_by_keyword(keyword, fallback_index=0):
-            """Scans all sheet names in the Excel file and matches based on a keyword search."""
             kw = str(keyword).lower().strip()
             for sheet in actual_sheets:
                 if kw in sheet.lower():
@@ -44,39 +42,37 @@ def process_sugar_iq_workbook(file_path):
         m3_sheet = find_sheet_by_keyword("no 3", 0)               
         m4_sheet = find_sheet_by_keyword("no 4", 0)               
 
-        # Load and index data sheets matching your exact column names
-        nutsch_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet)))
-        composite_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet)))
+        # Load and add structural sequence numbering based on row positions
+        nutsch_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet)))
+        composite_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet)))
         
-        m1_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet)))
-        m2_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m2_sheet)))
-        m3_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
-        m4_df = add_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet)))
+        m1_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet)))
+        m2_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m2_sheet)))
+        m3_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
+        m4_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet)))
                 
-        # Isolate baseline parameters matching your precise casing
-        nutsch_base = nutsch_df[['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
-        comp_base = composite_df[['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Overall_FMP'})
+        # Isolate baseline parameters matching your precise sheet structure
+        nutsch_base = nutsch_df[['Week No.', 'Day No.', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
+        comp_base = composite_df[['Week No.', 'Day No.', 'Daily_Sequence_Order', 'Purity Nirs', 'Test Time']].rename(columns={'Purity Nirs': 'Overall_FMP'})
         
-        # Merge key columns frame
-        master = pd.merge(nutsch_base, comp_base, on=['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order'], how='outer')
+        # Merge structural key columns frame
+        master = pd.merge(nutsch_base, comp_base, on=['Week No.', 'Day No.', 'Daily_Sequence_Order'], how='outer')
         
-        # Loop through machines using multi-index tracking
+        # Loop through machines and map data using row order matching keys
         machines = {'M1': m1_df, 'M2': m2_df, 'M3': m3_df, 'M4': m4_df}
         for code, mdf in machines.items():
-            m_sub = mdf[['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(
+            m_sub = mdf[['Week No.', 'Day No.', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(
                 columns={'Purity Nirs': f'{code}_Pur', 'Brix Nirs': f'{code}_Brix'}
             )
-            master = pd.merge(master, m_sub, on=['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order'], how='left')
-            
-            # Dynamic calculation matching your process logic
+            master = pd.merge(master, m_sub, on=['Week No.', 'Day No.', 'Daily_Sequence_Order'], how='left')
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
             
-        master = master.sort_values(by=['Week No.', 'Day No.', 'Test Time', 'Daily_Sequence_Order']).reset_index(drop=True)
+        master = master.sort_values(by=['Week No.', 'Day No.', 'Daily_Sequence_Order']).reset_index(drop=True)
         return master, None
     except Exception as e:
         return None, str(e)
 
-# --- AUTOMATED DATA LOADING LAYER ---
+# --- DATA LOADING LAYER ---
 try:
     df, error_msg = process_sugar_iq_workbook("factory_data.xlsx")
     if error_msg:
@@ -86,12 +82,21 @@ except FileNotFoundError:
     st.error("❌ Data Source Missing: Please ensure 'factory_data.xlsx' is uploaded directly to your GitHub repository root.")
     st.stop()
 
-# Isolate latest recorded laboratory entries
-latest_valid_row = df.dropna(subset=['Overall_FMP']).iloc[-1]
-current_fmp = latest_valid_row['Overall_FMP']
+# --- SMART RECOVERY LAYER FOR OFFLINE LINES ---
+# Find the latest row where AT LEAST ONE machine has a valid calculated purity rise
+valid_machine_rows = df.dropna(subset=['M1_Rise', 'M3_Rise', 'M4_Rise'], how='all')
+
+if len(valid_machine_rows) == 0:
+    st.error("❌ Data Alignment Sync Failed: No rows could be matched where machine data lines up with the Nutsch baseline. Please check that 'Week No.' and 'Day No.' columns are matching perfectly across your tabs.")
+    st.stop()
+
+latest_valid_row = valid_machine_rows.iloc[-1]
+
+# Fallback for overall FMP tracking if the specific machine row lacks a composite value
+current_fmp = latest_valid_row['Overall_FMP'] if not pd.isna(latest_valid_row['Overall_FMP']) else df.dropna(subset=['Overall_FMP']).iloc[-1]['Overall_FMP']
 current_week = int(latest_valid_row['Week No.'])
 
-# --- 2. STATION-WIDE GLOBAL ANALYSIS LAYER (UPSTREAM INSPECTION) ---
+# --- STATION-WIDE GLOBAL ANALYSIS LAYER (UPSTREAM INSPECTION) ---
 possible_machines = ['M1', 'M2', 'M3', 'M4']
 active_on_floor = [m for m in possible_machines if not pd.isna(latest_valid_row[f'{m}_Rise'])]
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
@@ -106,7 +111,7 @@ if all_active_high:
     )
     st.markdown("---")
 
-# --- 3. EXECUTIVE CORE VISUALIZATION LAYER ---
+# --- EXECUTIVE CORE VISUALIZATION LAYER ---
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
     st.metric(label="Current Composite FMP", value=f"{current_fmp:.2f} %", delta=f"{current_fmp - 37.0:+.2f} % vs Target 37%")
@@ -114,9 +119,9 @@ with kpi2:
     st.metric(label="Active Centrifugals", value=f"{len(active_on_floor)} / 4 Online", 
               delta="C-BMA 2 Prolonged Breakdown Active" if 'M2' not in active_on_floor else "All Units Synchronized")
 with kpi3:
-    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22", delta="Automated Keyphrase Mapping Active")
+    st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22", delta="Smart Filter Active (Skipping Empty End Rows)")
 
-# --- 4. PROGNOSTIC & PRESCRIPTIVE ENGINE ---
+# --- PROGNOSTIC & PRESCRIPTIVE ENGINE ---
 st.markdown("### 🔮 Predictive Performance & Prescriptive Actions")
 machine_cards = st.columns(4)
 config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'}
@@ -160,4 +165,3 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
                     st.success(f"✅ Performance Stable\nEst. screen life remaining: {runs_until_breach:.1f} analyses.")
             else:
                 st.success("✅ Performance Stable\nNo upward degradation drift detected.")
-
