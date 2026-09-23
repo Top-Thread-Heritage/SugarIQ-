@@ -82,44 +82,28 @@ def process_sugar_iq_workbook(file_path):
         
         machines = {'M1': m1_df, 'M2': m2_df, 'M3': m3_df, 'M4': m4_df}
         for code, mdf in machines.items():
-            m_sub = mdf[['Week No.', 'Day No.', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(
-                columns={'Purity Nirs': f'{code}_Pur', 'Brix Nirs': f'{code}_Brix'}
-            )
-            master = pd.merge(master, m_sub, on=['Week No.', 'Day No.', 'Daily_Sequence_Order'], how='left')
-            
+            master = pd.merge(master, mdf[['Week No.', 'Day No.', 'Daily_Sequence_Order', 'Purity Nirs', 'Brix Nirs']].rename(columns={'Purity Nirs': f'{code}_Pur', 'Brix Nirs': f'{code}_Brix'}), on=['Week No.', 'Day No.', 'Daily_Sequence_Order'], how='left')
             master[f'{code}_Pur'] = force_numeric(master[f'{code}_Pur'])
             master[f'{code}_Brix'] = force_numeric(master[f'{code}_Brix'])
-            master['Nutsch_Pur'] = force_numeric(master['Nutsch_Pur'])
-            master['Overall_FMP'] = force_numeric(master['Overall_FMP'])
+            master[f'{code}_Rise'] = master[f'{code}_Pur'] - force_numeric(master['Nutsch_Pur'])
             
-            master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
-            
+        master['Nutsch_Pur'] = force_numeric(master['Nutsch_Pur'])
+        master['Overall_FMP'] = force_numeric(master['Overall_FMP'])
         master = master.sort_values(by=['Week No.', 'Day No.', 'Daily_Sequence_Order']).reset_index(drop=True)
         return master, None
     except Exception as e:
         return None, str(e)
 
-# --- AUTOMATED DATA LOADING LAYER ---
-try:
-    df, error_msg = process_sugar_iq_workbook("factory_data.xlsx")
-    if error_msg:
-        st.error(f"❌ Structural error reading file: {error_msg}")
-        st.stop()
-except FileNotFoundError:
-    st.error("❌ Data Source Missing: Please ensure 'factory_data.xlsx' is in your repo.")
-    st.stop()
+# --- DATA LOADING ---
+df, error_msg = process_sugar_iq_workbook("factory_data.xlsx")
 
 valid_machine_rows = df.dropna(subset=['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise'], how='all')
-if len(valid_machine_rows) == 0:
-    st.error("❌ No overlapping valid numerical records found. Please check columns.")
-    st.stop()
-
 latest_valid_row = valid_machine_rows.iloc[-1]
-current_fmp = latest_valid_row['Overall_FMP'] if not pd.isna(latest_valid_row['Overall_FMP']) else df.dropna(subset=['Overall_FMP']).iloc[-1]['Overall_FMP']
+current_fmp = latest_valid_row['Overall_FMP'] if pd.notna(latest_valid_row['Overall_FMP']) else 37.0
 current_week = int(latest_valid_row['Week No.'])
 
 config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'}
-active_on_floor = [m_code for m_name, m_code in config_map.items() if not pd.isna(latest_valid_row[f'{m_code}_Rise'])]
+active_on_floor = [m_code for m_name, m_code in config_map.items() if pd.notna(latest_valid_row[f'{m_code}_Rise'])]
 
 worst_machine_name = "None"
 max_purity_rise = -999.0
@@ -133,12 +117,12 @@ for m_name, m_code in config_map.items():
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
 if all_active_high:
-    st.error(f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**\\n\\n**Diagnosis:** All running centrifugals show excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or reheater settings.\\n\\n🏆 **Worst Performing Unit:** **{worst_machine_name}** is struggling the most with an extreme purity rise of **{max_purity_rise:.2f} units**.")
+    st.error(f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT**\\n\\nAll running centrifugals show high purity rise. Upstream issue: check C-massecuite conditioning or false grain.\\n\\n🏆 Worst Machine: **{worst_machine_name}** ({max_purity_rise:.2f} units).")
     st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
-    st.metric(label="Current Composite FMP", value=f"{current_fmp:.2f} %" if pd.notna(current_fmp) else "N/A")
+    st.metric(label="Current Composite FMP", value=f"{current_fmp:.2f} %")
 with kpi2:
     st.metric(label="Active Centrifugals", value=f"{len(active_on_floor)} / 4 Online")
 with kpi3:
@@ -150,16 +134,12 @@ machine_cards = st.columns(4)
 for idx, (m_name, m_code) in enumerate(config_map.items()):
     with machine_cards[idx]:
         st.subheader(m_name)
-        
-        # Offline display layout
         if pd.isna(latest_valid_row[f'{m_code}_Rise']):
             st.error("❌ MACHINE OFFLINE")
-            st.caption("Status: Prolonged breakdown logged.")
             continue
             
         m_rise = float(latest_valid_row[f'{m_code}_Rise'])
-        m_brix = latest_valid_row[f'{m_code}_Brix']
-        m_brix_val = float(m_brix) if pd.notna(m_brix) else 0.0
+        m_brix_val = float(latest_valid_row[f'{m_code}_Brix']) if pd.notna(latest_valid_row[f'{m_code}_Brix']) else 0.0
         
         m_history = df.dropna(subset=[f'{m_code}_Rise']).copy()
         m_history[f'{m_code}_Rise'] = force_numeric(m_history[f'{m_code}_Rise'])
@@ -170,32 +150,31 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             X_time = np.array(range(len(m_history))).reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
-            drift_velocity = float(reg.coef_) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
+            drift_velocity = float(reg.coef_[0][0]) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_[0]) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
             
         st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / run" if drift_velocity != 0 else None)
-        st.text(f"Molasses Density: {m_brix_val:.1f}°Bx" if m_brix_val > 0 else "Density: N/A")
+        st.text(f"Molasses Density: {m_brix_val:.1f}°Bx")
         
-        # Completely flattened insights with absolutely NO indented inner branches
-        is_breached = m_rise > 2.0
-        is_low_brix = m_brix_val < 82.0 and m_brix_val > 0
-        
-        if is_breached:
+        if m_rise > 2.0:
             st.error("🚨 Threshold Breached")
-        if is_breached and is_low_brix:
-            st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
-        if is_breached and not is_low_brix:
-            st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
-        if not is_breached and drift_velocity > 0:
-            runs_left = (2.0 - m_rise) / drift_velocity
-            st.warning(f"⚠️ Life Remaining: {runs_left:.1f} runs.")
-        if not is_breached and not drift_velocity > 0:
-            st.success("✅ Performance Stable")
+            if m_brix_val < 82.0 and m_brix_val > 0:
+                st.warning("👉 **Operator:** Over-washing melting sugar. Taper water valves.")
+            else:
+                st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens.")
+        else:
+            if drift_velocity > 0:
+                runs_left = (2.0 - m_rise) / drift_velocity
+                st.warning(f"⚠️ Life: {runs_left:.1f} runs.")
+            else:
+                st.success("✅ Stable")
 
-# --- HISTORICAL GRAPH TRENDS SECTION WITH PROTECTION ---
+# --- HISTORICAL GRAPH TRENDS SECTION ---
 st.markdown("### 📈 Long-Term Historical Performance Trends (Weeks 1-22)")
-try:
-    trend_data = df.copy()
-    trend_data['Week No.'] = pd.to_numeric(trend_data['Week No.'], errors='coerce')
-    trend_data = trend_data.dropna(subset=['Week No.'])
-    for mc in ['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']:
-        trend_data[mc] = pd.to_numeric(trend_data[mc], errors='coerce')
+trend_data = df.copy()
+trend_data['Week No.'] = force_numeric(trend_data['Week No.'])
+trend_data = trend_data.dropna(subset=['Week No.'])
+for mc in ['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']:
+    trend_data[mc] = force_numeric(trend_data[mc])
+trend_summary = trend_data.groupby(['Week No.'])[['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']].mean()
+trend_summary.columns = ['C-BMA 1 Rise', 'C-BMA 2 Rise', 'C-BMA 3 Rise', 'C-BMA 4 Rise']
+st.line_chart(trend_summary)
