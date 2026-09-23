@@ -137,7 +137,10 @@ if len(v_m1) > 0:
     m1_rise = float(row['M1_Rise'])
     m1_brix = float(row['M1_Brix']) if pd.notna(row['M1_Brix']) else 0.0
     reg_m1 = LinearRegression().fit(v_m1['Timeline_Step'].values.reshape(-1, 1), v_m1['M1_Rise'].values.reshape(-1, 1))
-    drift_m1 = float(reg_m1.coef_)
+    
+    # ADVANCED 2D LIST ELEMENT MATRIX UNPACKING KEYS
+    drift_m1 = float(reg_m1.coef_[0][0])
+    
     st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
     st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
     if m1_rise > 2.0:
@@ -161,7 +164,10 @@ if len(v_m3) > 0:
     m3_rise = float(row['M3_Rise'])
     m3_brix = float(row['M3_Brix']) if pd.notna(row['M3_Brix']) else 0.0
     reg_m3 = LinearRegression().fit(v_m3['Timeline_Step'].values.reshape(-1, 1), v_m3['M3_Rise'].values.reshape(-1, 1))
-    drift_m3 = float(reg_m3.coef_)
+    
+    # ADVANCED 2D LIST ELEMENT MATRIX UNPACKING KEYS
+    drift_m3 = float(reg_m3.coef_[0][0])
+    
     st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
     st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
     if m3_rise > 2.0:
@@ -179,7 +185,10 @@ if len(v_m4) > 0:
     m4_rise = float(row['M4_Rise'])
     m4_brix = float(row['M4_Brix']) if pd.notna(row['M4_Brix']) else 0.0
     reg_m4 = LinearRegression().fit(v_m4['Timeline_Step'].values.reshape(-1, 1), v_m4['M4_Rise'].values.reshape(-1, 1))
-    drift_m4 = float(reg_m4.coef_)
+    
+    # ADVANCED 2D LIST ELEMENT MATRIX UNPACKING KEYS
+    drift_m4 = float(reg_m4.coef_[0][0])
+    
     st.metric(label="C-BMA 4 Purity Rise", value=f"{m4_rise:.2f} units", delta=f"{drift_m4:+.3f} / shift" if drift_m4 != 0 else None)
     st.text(f"Molasses Density: {m4_brix:.1f}°Bx")
     if m4_rise > 2.0:
@@ -203,9 +212,3 @@ if reg_m1 is not None and len(df) > 0:
     p1[len(df)+2] = max(0.0, float(reg_m1.predict([[len(df) + 3]])))
     p1[len(df)+3] = max(0.0, float(reg_m1.predict([[len(df) + 4]])))
     p1[len(df)+4] = max(0.0, float(reg_m1.predict([[len(df) + 5]])))
-chart_output['C-BMA 1 (ML Projection)'] = pd.Series(p1, index=chart_index_flat)
-
-# Unroll Machine 3 Predictions Flatly
-p3 = [np.nan] * (len(df) + 5)
-if reg_m3 is not None and len(df) > 0:
-    p3[len(df)-1] = float(df['M3_Rise'].dropna().values[-1])
