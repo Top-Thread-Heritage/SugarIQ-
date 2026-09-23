@@ -146,69 +146,58 @@ with kpi3:
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 machine_cards = st.columns(4)
 
-# Separate variables to store models directly without dictionary iteration bugs
-reg_m1, reg_m3, reg_m4 = None, None, None
+# Build raw chronological numpy arrays for flat time-series matrix modeling
+X_time_flat = df['Timeline_Step'].values.reshape(-1, 1)
+future_steps_flat = np.array(list(range(len(df) + 1, len(df) + 6))).reshape(-1, 1)
+chart_index_flat = list(range(1, len(df) + 6))
+chart_output = pd.DataFrame(index=chart_index_flat)
 
-for idx, (m_name, m_code) in enumerate(config_map.items()):
-    with machine_cards[idx]:
-        st.subheader(m_name)
-        if pd.isna(latest_valid_row[f'{m_code}_Rise']):
-            st.error("❌ MACHINE OFFLINE")
-            st.caption("Status: Prolonged breakdown logged.")
-            continue
-            
-        m_rise = float(latest_valid_row[f'{m_code}_Rise'])
-        m_brix_val = float(latest_valid_row[f'{m_code}_Brix']) if pd.notna(latest_valid_row[f'{m_code}_Brix']) else 0.0
-        
-        m_history = df.dropna(subset=[f'{m_code}_Rise']).copy()
-        
-        drift_velocity = 0.0
-        if len(m_history) >= 3:
-            X_time = m_history['Timeline_Step'].values.reshape(-1, 1)
-            y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
-            reg = LinearRegression().fit(X_time, y_rise)
-            
-            if m_code == 'M1': reg_m1 = reg
-            if m_code == 'M3': reg_m3 = reg
-            if m_code == 'M4': reg_m4 = reg
-            
-            coef_raw = reg.coef_
-            if hasattr(coef_raw, "ndim") and coef_raw.ndim > 1:
-                drift_velocity = float(coef_raw)
-            elif hasattr(coef_raw, "__getitem__"):
-                drift_velocity = float(coef_raw)
-            else:
-                drift_velocity = float(coef_raw)
-            
-        st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / run" if drift_velocity != 0 else None)
-        st.text(f"Molasses Density: {m_brix_val:.1f}°Bx")
-        
-        is_breached = m_rise > 2.0
-        is_low_brix = m_brix_val < 82.0 and m_brix_val > 0
-        
-        if is_breached:
-            st.error("🚨 Threshold Breached")
-        if is_breached and is_low_brix:
-            st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
-        if is_breached and not is_low_brix:
-            st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
-        if not is_breached and drift_velocity > 0:
-            runs_left = (2.0 - m_rise) / drift_velocity
-            st.warning(f"⚠️ Life Remaining: {runs_left:.1f} steps.")
-        if not is_breached and not drift_velocity > 0:
-            st.success("✅ Performance Stable")
+# --- MACHINE 1 MODULE CARD & REGRESSION ---
+with machine_cards[0]:
+    st.subheader("C-BMA 1")
+    m1_rise = float(latest_valid_row['M1_Rise'])
+    m1_brix = float(latest_valid_row['M1_Brix']) if pd.notna(latest_valid_row['M1_Brix']) else 0.0
+    m1_history = df.dropna(subset=['M1_Rise']).copy()
+    reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
+    drift_m1 = float(reg_m1.coef_[0][0])
+    st.metric(label="Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / run" if drift_m1 != 0 else None)
+    st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
+    if m1_rise > 2.0:
+        st.error("🚨 Threshold Breached")
+    if m1_rise > 2.0 and m1_brix < 82.0 and m1_brix > 0:
+        st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
+    if m1_rise > 2.0 and not (m1_brix < 82.0 and m1_brix > 0):
+        st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
+    if not (m1_rise > 2.0) and drift_m1 > 0:
+        st.warning(f"⚠️ Life Remaining: {((2.0 - m1_rise) / drift_m1):.1f} steps.")
+    if not (m1_rise > 2.0) and not (drift_m1 > 0):
+        st.success("✅ Performance Stable")
 
-# --- HISTORICAL & ML GRAPH PROJECTIONS SECTION ---
-st.markdown("### 📈 Machine Learning Projections & Trend Overviews (Weeks 1-22 + Forecast)")
+    # Generate graph trend line with zero indent logic
+    m1_hist_arr = [np.nan] * len(chart_index_flat)
+    m1_pred_arr = [np.nan] * len(chart_index_flat)
+    for idx_r, row_r in df.iterrows():
+        m1_hist_arr[int(row_r['Timeline_Step']) - 1] = float(row_r['M1_Rise']) if pd.notna(row_r['M1_Rise']) else np.nan
+    m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
+    for fs in list(range(len(df) + 1, len(df) + 6)):
+        m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))[0][0]))
+    chart_output['C-BMA 1 (History)'] = m1_hist_arr
+    chart_output['C-BMA 1 (ML Projection)'] = m1_pred_arr
 
-total_historical_steps = len(df)
-future_steps = list(range(total_historical_steps + 1, total_historical_steps + 6))
-chart_index = list(range(1, total_historical_steps + 6))
+# --- MACHINE 2 MODULE CARD (OFFLINE) ---
+with machine_cards[1]:
+    st.subheader("C-BMA 2")
+    st.error("❌ MACHINE OFFLINE")
+    st.caption("Status: Prolonged breakdown logged.")
 
-chart_output = pd.DataFrame(index=chart_index)
-
-# Flat Line Generation for Machine 1
-m1_hist, m1_pred = [np.nan] * len(chart_index), [np.nan] * len(chart_index)
-for idx_row, row in df.iterrows():
-    m1_hist[int(row['Timeline_Step']) - 1] = float(row['M1_Rise']) if pd.notna(row['M1_Rise']) else np.nan
-if reg_m1 is not None:
+# --- MACHINE 3 MODULE CARD & REGRESSION ---
+with machine_cards[2]:
+    st.subheader("C-BMA 3")
+    m3_rise = float(latest_valid_row['M3_Rise'])
+    m3_brix = float(latest_valid_row['M3_Brix']) if pd.notna(latest_valid_row['M3_Brix']) else 0.0
+    m3_history = df.dropna(subset=['M3_Rise']).copy()
+    reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
+    drift_m3 = float(reg_m3.coef_[0][0])
+    st.metric(label="Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / run" if drift_m3 != 0 else None)
+    st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
+    if m3_rise > 2.0:
