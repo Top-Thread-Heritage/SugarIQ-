@@ -79,7 +79,7 @@ def process_sugar_iq_workbook(file_path):
             if 'Brix Nirs' in frame.columns:
                 frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
 
-        # Aggregate averages by Week and Day to bypass missing intra-day timestamp gaps safely
+        # Aggregate averages by Week and Day to bypass missing gaps safely
         nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
         
@@ -128,7 +128,7 @@ for m_name, m_code in config_map.items():
 
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
-# --- 2. GLOBAL STATION CRITICAL ALERT (BUG-FREE FORMATTING) ---
+# --- 2. GLOBAL STATION CRITICAL ALERT ---
 if all_active_high:
     st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
     st.warning("**Diagnosis:** All running centrifugals show an excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or crystallizer reheater settings rather than local screen damage.")
@@ -148,52 +148,60 @@ st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 chart_index_flat = list(range(1, len(df) + 6))
 chart_output = pd.DataFrame(index=chart_index_flat)
 
-# --- MACHINE 1 MODULE CARD & REGRESSION ---
+reg_m1, reg_m3, reg_m4 = None, None, None
+
+# --- C-BMA 1 ---
 st.markdown("#### **C-BMA 1**")
-m1_rise = float(latest_valid_row['M1_Rise'])
-m1_brix = float(latest_valid_row['M1_Brix']) if pd.notna(latest_valid_row['M1_Brix']) else 0.0
-m1_history = df.dropna(subset=['M1_Rise']).copy()
-reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
+m1_rise_val = latest_valid_row['M1_Rise']
+m1_brix_val = latest_valid_row['M1_Brix']
+m1_history = df.dropna(subset=['M1_Rise', 'Timeline_Step']).copy()
 
-# Safe 2D matrix array index extraction fix
-drift_m1 = float(reg_m1.coef_[0][0]) if hasattr(reg_m1.coef_, "__getitem__") and hasattr(reg_m1.coef_[0], "__getitem__") else float(reg_m1.coef_[0]) if hasattr(reg_m1.coef_, "__getitem__") else float(reg_m1.coef_)
-
-st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
-st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
-if m1_rise > 2.0: st.error("🚨 C-BMA 1 Threshold Breached")
-if m1_rise > 2.0 and m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator (M1):** Over-washing melting sugar. Taper manual water valves.")
-if m1_rise > 2.0 and not (m1_brix < 82.0 and m1_brix > 0): st.warning("👉 **Foreman (M1):** Mechanical screen bypass. Inspect screens immediately.")
-if not (m1_rise > 2.0) and drift_m1 > 0: st.warning(f"⚠️ C-BMA 1 Life Remaining: {((2.0 - m1_rise) / drift_m1):.1f} steps.")
-if not (m1_rise > 2.0) and not (drift_m1 > 0): st.success("✅ C-BMA 1 Performance Stable")
+if pd.notna(m1_rise_val) and len(m1_history) >= 3:
+    m1_rise = float(m1_rise_val)
+    m1_brix = float(m1_brix_val) if pd.notna(m1_brix_val) else 0.0
+    reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
+    drift_m1 = float(reg_m1.coef_)
+    st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
+    st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
+    if m1_rise > 2.0: st.error("🚨 C-BMA 1 Threshold Breached")
+    if m1_rise > 2.0 and m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator (M1):** Over-washing melting sugar. Taper manual water valves.")
+    if m1_rise > 2.0 and not (m1_brix < 82.0 and m1_brix > 0): st.warning("👉 **Foreman (M1):** Mechanical screen bypass. Inspect screens immediately.")
+    if not (m1_rise > 2.0) and drift_m1 > 0: st.warning(f"⚠️ C-BMA 1 Life Remaining: {((2.0 - m1_rise) / drift_m1):.1f} steps.")
+    if not (m1_rise > 2.0) and not (drift_m1 > 0): st.success("✅ C-BMA 1 Performance Stable")
+else:
+    st.error("❌ C-BMA 1 DATA OFFLINE")
 
 m1_hist_arr = [np.nan] * len(chart_index_flat)
 m1_pred_arr = [np.nan] * len(chart_index_flat)
 for idx_r, row_r in df.iterrows():
     m1_hist_arr[int(row_r['Timeline_Step']) - 1] = float(row_r['M1_Rise']) if pd.notna(row_r['M1_Rise']) else np.nan
-m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
-for fs in list(range(len(df) + 1, len(df) + 6)):
-    raw_p1 = reg_m1.predict(np.array([[fs]]))
-    p_val1 = float(raw_p1[0][0]) if hasattr(raw_p1, "__getitem__") and hasattr(raw_p1[0], "__getitem__") else float(raw_p1[0]) if hasattr(raw_p1, "__getitem__") else float(raw_p1)
-    m1_pred_arr[fs - 1] = max(0.0, p_val1)
+if reg_m1 is not None and pd.notna(m1_hist_arr[len(df) - 1]):
+    m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
+    for fs in list(range(len(df) + 1, len(df) + 6)):
+        m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))))
 chart_output['C-BMA 1 (History)'] = m1_hist_arr
 chart_output['C-BMA 1 (ML Projection)'] = m1_pred_arr
 
 st.markdown("---")
 
-# --- MACHINE 2 MODULE CARD (OFFLINE) ---
+# --- C-BMA 2 ---
 st.markdown("#### **C-BMA 2**")
 st.error("❌ MACHINE OFFLINE")
 st.caption("Status: Prolonged breakdown logged.")
 
 st.markdown("---")
 
-# --- MACHINE 3 MODULE CARD & REGRESSION ---
+# --- C-BMA 3 ---
 st.markdown("#### **C-BMA 3**")
-m3_rise = float(latest_valid_row['M3_Rise'])
-m3_brix = float(latest_valid_row['M3_Brix']) if pd.notna(latest_valid_row['M3_Brix']) else 0.0
-m3_history = df.dropna(subset=['M3_Rise']).copy()
-reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
+m3_rise_val = latest_valid_row['M3_Rise']
+m3_brix_val = latest_valid_row['M3_Brix']
+m3_history = df.dropna(subset=['M3_Rise', 'Timeline_Step']).copy()
 
-# Safe 2D matrix array index extraction fix
-drift_m3 = float(reg_m3.coef_[0][0]) if hasattr(reg_m3.coef_, "__getitem__") and hasattr(reg_m3.coef_[0], "__getitem__") else float(reg_m3.coef_[0]) if hasattr(reg_m3.coef_, "__getitem__") else float(reg_m3.coef_)
-
+if pd.notna(m3_rise_val) and len(m3_history) >= 3:
+    m3_rise = float(m3_rise_val)
+    m3_brix = float(m3_brix_val) if pd.notna(m3_brix_val) else 0.0
+    reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
+    drift_m3 = float(reg_m3.coef_)
+    st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
+    st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
+    if m3_rise > 2.0: st.error("🚨 C-BMA 3 Threshold Breached")
