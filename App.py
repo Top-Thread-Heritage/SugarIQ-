@@ -66,9 +66,9 @@ def process_sugar_iq_workbook(file_path):
         nutsch_sheet = find_sheet_by_keyword("nutsch", 2)      
         composite_sheet = find_sheet_by_keyword("hour", 1)   
         m1_sheet = find_sheet_by_keyword("no 1", 0)               
-        m2_sheet = find_sheet_by_keyword("no 2", 0)               
-        m3_sheet = find_sheet_by_keyword("no 3", 0)               
-        m4_sheet = find_sheet_by_keyword("no 4", 0)               
+        m2_sheet = find_sheet_by_keyword("no 2", 1)               
+        m3_sheet = find_sheet_by_keyword("no 3", 2)               
+        m4_sheet = find_sheet_by_keyword("number 4", 3)               
 
         nutsch_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet)))
         composite_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet)))
@@ -95,6 +95,7 @@ def process_sugar_iq_workbook(file_path):
             master['Nutsch_Pur'] = force_numeric(master['Nutsch_Pur'])
             master['Overall_FMP'] = force_numeric(master['Overall_FMP'])
             
+            # Purity Rise Calculation
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
             
         master = master.sort_values(by=['Week No.', 'Day No.', 'Daily_Sequence_Order']).reset_index(drop=True)
@@ -112,6 +113,7 @@ except FileNotFoundError:
     st.error("❌ Data Source Missing: Please ensure 'factory_data.xlsx' is in your repo.")
     st.stop()
 
+# Filter active rows safely
 valid_machine_rows = df.dropna(subset=['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise'], how='all')
 if len(valid_machine_rows) == 0:
     st.error("❌ No overlapping valid numerical records found. Please check columns.")
@@ -121,28 +123,32 @@ latest_valid_row = valid_machine_rows.iloc[-1]
 current_fmp = latest_valid_row['Overall_FMP'] if not pd.isna(latest_valid_row['Overall_FMP']) else df.dropna(subset=['Overall_FMP']).iloc[-1]['Overall_FMP']
 current_week = int(latest_valid_row['Week No.'])
 
-possible_machines = ['M1', 'M2', 'M3', 'M4']
-config_labels = {'M1': 'C-BMA 1', 'M2': 'C-BMA 2', 'M3': 'C-BMA 3', 'M4': 'C-BMA 4'}
-active_on_floor = [m for m in possible_machines if not pd.isna(latest_valid_row[f'{m}_Rise'])]
+# Corrected mapping dictionary structure
+config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'}
+active_on_floor = [m_code for m_name, m_code in config_map.items() if not pd.isna(latest_valid_row[f'{m_code}_Rise'])]
 
-worst_machine_code = None
+# Find the worst performing active unit
+worst_machine_name = None
 max_purity_rise = -999.0
-for m in active_on_floor:
-    val = float(latest_valid_row[f'{m}_Rise'])
-    if val > max_purity_rise:
-        max_purity_rise = val
-        worst_machine_code = m
+for m_name, m_code in config_map.items():
+    if m_code in active_on_floor:
+        val = float(latest_valid_row[f'{m_code}_Rise'])
+        if val > max_purity_rise:
+            max_purity_rise = val
+            worst_machine_name = m_name
 
+# --- GLOBAL UPSTREAM WARNING + WORST PERFORMER INSIGHT ---
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
 if all_active_high:
     st.error(
         f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**\n\n"
         f"**Diagnosis:** All running centrifugals show excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or reheater settings.\n\n"
-        f"🏆 **Worst Performing Unit:** **{config_labels[worst_machine_code]}** is struggling the most with an extreme purity rise of **{max_purity_rise:.2f} units**."
+        f"🏆 **Worst Performing Unit:** **{worst_machine_name}** is struggling the most with an extreme purity rise of **{max_purity_rise:.2f} units**."
     )
     st.markdown("---")
 
+# --- EXECUTIVE SUMMARY LAYER ---
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
     st.metric(label="Current Composite FMP", value=f"{current_fmp:.2f} %" if not pd.isna(current_fmp) else "N/A")
@@ -151,10 +157,11 @@ with kpi2:
 with kpi3:
     st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22")
 
+# --- PROGNOSTIC INDIVIDUAL SECTIONS ---
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 machine_cards = st.columns(4)
 
-for idx, (m_name, m_code) in enumerate(config_labels.items()):
+for idx, (m_name, m_code) in enumerate(config_map.items()):
     with machine_cards[idx]:
         st.subheader(m_name)
         if pd.isna(latest_valid_row[f'{m_code}_Rise']):
@@ -195,5 +202,6 @@ for idx, (m_name, m_code) in enumerate(config_labels.items()):
 
 st.markdown("### 📈 Long-Term Historical Performance Trends (Weeks 1-22)")
 trend_data = df.dropna(subset=['Week No.']).copy()
+trend_data['Week No.'] = force_numeric(trend_data['Week No.'])
 trend_data = trend_data.groupby(['Week No.'])[['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']].mean()
 st.line_chart(trend_data)
