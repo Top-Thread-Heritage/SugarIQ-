@@ -146,7 +146,8 @@ with kpi3:
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 machine_cards = st.columns(4)
 
-models_dict = {}
+# Separate variables to store models directly without dictionary iteration bugs
+reg_m1, reg_m3, reg_m4 = None, None, None
 
 for idx, (m_name, m_code) in enumerate(config_map.items()):
     with machine_cards[idx]:
@@ -166,13 +167,16 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             X_time = m_history['Timeline_Step'].values.reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
-            models_dict[m_code] = reg
+            
+            if m_code == 'M1': reg_m1 = reg
+            if m_code == 'M3': reg_m3 = reg
+            if m_code == 'M4': reg_m4 = reg
             
             coef_raw = reg.coef_
             if hasattr(coef_raw, "ndim") and coef_raw.ndim > 1:
-                drift_velocity = float(coef_raw[0][0])
+                drift_velocity = float(coef_raw)
             elif hasattr(coef_raw, "__getitem__"):
-                drift_velocity = float(coef_raw[0])
+                drift_velocity = float(coef_raw)
             else:
                 drift_velocity = float(coef_raw)
             
@@ -203,15 +207,8 @@ chart_index = list(range(1, total_historical_steps + 6))
 
 chart_output = pd.DataFrame(index=chart_index)
 
-for m_name, m_code in config_map.items():
-    hist_series = [np.nan] * len(chart_index)
-    pred_series = [np.nan] * len(chart_index)
-    
-    # Populate historical trends perfectly
-    for idx_row, row in df.iterrows():
-        step = int(row['Timeline_Step'])
-        val = row[f'{m_code}_Rise']
-        hist_series[step - 1] = float(val) if pd.notna(val) else np.nan
-        
-    # Extrapolate 3-week predictive future trend line with secure extraction keys
-    if m_code in models_dict:
+# Flat Line Generation for Machine 1
+m1_hist, m1_pred = [np.nan] * len(chart_index), [np.nan] * len(chart_index)
+for idx_row, row in df.iterrows():
+    m1_hist[int(row['Timeline_Step']) - 1] = float(row['M1_Rise']) if pd.notna(row['M1_Rise']) else np.nan
+if reg_m1 is not None:
