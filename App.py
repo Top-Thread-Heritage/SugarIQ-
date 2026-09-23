@@ -131,6 +131,9 @@ with kpi3:
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 machine_cards = st.columns(4)
 
+# We store our trained ML models in a dictionary to generate future trends below
+models_dict = {}
+
 for idx, (m_name, m_code) in enumerate(config_map.items()):
     with machine_cards[idx]:
         st.subheader(m_name)
@@ -141,18 +144,20 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
         m_rise = float(latest_valid_row[f'{m_code}_Rise'])
         m_brix_val = float(latest_valid_row[f'{m_code}_Brix']) if pd.notna(latest_valid_row[f'{m_code}_Brix']) else 0.0
         
-        m_history = df.dropna(subset=[f'{m_code}_Rise']).copy()
+        m_history = df.dropna(subset=[f'{m_code}_Rise', 'Week No.']).copy()
+        m_history['Week No.'] = force_numeric(m_history['Week No.'])
         m_history[f'{m_code}_Rise'] = force_numeric(m_history[f'{m_code}_Rise'])
-        m_history = m_history[np.isfinite(m_history[f'{m_code}_Rise'])]
+        m_history = m_history[np.isfinite(m_history[f'{m_code}_Rise']) & np.isfinite(m_history['Week No.'])]
         
         drift_velocity = 0.0
         if len(m_history) >= 4:
-            X_time = np.array(range(len(m_history))).reshape(-1, 1)
+            X_time = m_history['Week No.'].values.reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
-            drift_velocity = float(reg.coef_[0][0]) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_[0]) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
+            models_dict[m_code] = reg
+            drift_velocity = float(reg.coef_[0][0])
             
-        st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / run" if drift_velocity != 0 else None)
+        st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / week" if drift_velocity != 0 else None)
         st.text(f"Molasses Density: {m_brix_val:.1f}°Bx")
         
         if m_rise > 2.0:
@@ -164,17 +169,44 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
         else:
             if drift_velocity > 0:
                 runs_left = (2.0 - m_rise) / drift_velocity
-                st.warning(f"⚠️ Life: {runs_left:.1f} runs.")
+                st.warning(f"⚠️ Life: {runs_left:.1f} weeks.")
             else:
                 st.success("✅ Stable")
 
-# --- HISTORICAL GRAPH TRENDS SECTION ---
-st.markdown("### 📈 Long-Term Historical Performance Trends (Weeks 1-22)")
+# --- HISTORICAL & ML PROJECTION CHART SECTION ---
+st.markdown("### 📈 3-Week Machine Learning Performance Projections")
+
+# Prepare historical averages per week
 trend_data = df.copy()
 trend_data['Week No.'] = force_numeric(trend_data['Week No.'])
 trend_data = trend_data.dropna(subset=['Week No.'])
 for mc in ['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']:
     trend_data[mc] = force_numeric(trend_data[mc])
-trend_summary = trend_data.groupby(['Week No.'])[['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']].mean()
-trend_summary.columns = ['C-BMA 1 Rise', 'C-BMA 2 Rise', 'C-BMA 3 Rise', 'C-BMA 4 Rise']
-st.line_chart(trend_summary)
+
+trend_summary = trend_data.groupby(['Week No.'])[['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']].mean().reset_index()
+
+# Generate predictive rows for Week 23, 24, 25
+future_weeks = [23, 24, 25]
+future_rows = []
+
+for fw in future_weeks:
+    row_dict = {'Week No.': fw}
+    for m_name, m_code in config_map.items():
+        if m_code in models_dict:
+            # Predict the value using the trained model
+            pred_val = float(models_dict[m_code].predict(np.array([[fw]]))[0][0])
+            row_dict[f'{m_code}_Rise'] = max(0.0, pred_val) # Prevent negative purities
+        else:
+            row_dict[f'{m_code}_Rise'] = np.nan
+    future_rows.append(row_dict)
+
+future_df = pd.DataFrame(future_rows)
+
+# Mark data sources cleanly for clear distinction
+trend_summary['Data Scope'] = 'Actual History'
+future_df['Data Scope'] = 'Sugar IQ Forecast (ML Projections)'
+
+# Combine both dataframes
+full_chart_df = pd.concat([trend_summary, future_df], ignore_index=True)
+full_chart_df = full_chart_df.set_index('Week No.')
+
