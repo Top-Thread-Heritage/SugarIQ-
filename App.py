@@ -114,10 +114,24 @@ v_comp = df.dropna(subset=['Overall_FMP'])
 current_fmp = float(v_comp.iloc[-1]['Overall_FMP']) if len(v_comp) > 0 else 37.0
 current_week = int(v_comp.iloc[-1]['Week No.']) if len(v_comp) > 0 else 22
 
+# Compute operational data states for Global Alerts validation parameters safely
+m1_last_rise = float(v_m1.iloc[-1]['M1_Rise']) if len(v_m1) > 0 else 0.0
+m3_last_rise = float(v_m3.iloc[-1]['M3_Rise']) if len(v_m3) > 0 else 0.0
+m4_last_rise = float(v_m4.iloc[-1]['M4_Rise']) if len(v_m4) > 0 else 0.0
+
 active_count = 0
 if len(v_m1) > 0: active_count += 1
 if len(v_m3) > 0: active_count += 1
 if len(v_m4) > 0: active_count += 1
+
+# --- 2. GLOBAL STATION CRITICAL ALERT (RE-INTEGRATED PROCESS ENGINE CHECK) ---
+all_active_high = (m1_last_rise > 2.0) and (m3_last_rise > 2.0) and (m4_last_rise > 2.0)
+
+if all_active_high:
+    st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
+    st.warning("**Diagnosis:** All running centrifugals are showing an excessive purity rise simultaneously. This mathematically isolates the process fault away from individual localized screen tears or manual water leakage.")
+    st.info("👉 **Immediate Action Plan:** Notify the Boiling House Foreman to inspect upstream **C-massecuite quality**. Check for poor heat-exchange performance inside the crystallizer reheaters (viscosity spike) or pan station logs for active **false grain presence**.")
+    st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1: st.metric(label="Current Overall FMP", value=f"{current_fmp:.2f} %")
@@ -137,7 +151,7 @@ if len(v_m1) > 0:
     m1_rise = float(row['M1_Rise'])
     m1_brix = float(row['M1_Brix']) if pd.notna(row['M1_Brix']) else 0.0
     reg_m1 = LinearRegression().fit(v_m1['Timeline_Step'].values.reshape(-1, 1), v_m1['M1_Rise'].values.reshape(-1, 1))
-    drift_m1 = float(reg_m1.coef_[0][0]) if hasattr(reg_m1.coef_, "__getitem__") and hasattr(reg_m1.coef_[0], "__getitem__") else float(reg_m1.coef_[0]) if hasattr(reg_m1.coef_, "__getitem__") else float(reg_m1.coef_)
+    drift_m1 = float(reg_m1.coef_)
     st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
     st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
     if m1_rise > 2.0:
@@ -161,7 +175,7 @@ if len(v_m3) > 0:
     m3_rise = float(row['M3_Rise'])
     m3_brix = float(row['M3_Brix']) if pd.notna(row['M3_Brix']) else 0.0
     reg_m3 = LinearRegression().fit(v_m3['Timeline_Step'].values.reshape(-1, 1), v_m3['M3_Rise'].values.reshape(-1, 1))
-    drift_m3 = float(reg_m3.coef_[0][0]) if hasattr(reg_m3.coef_, "__getitem__") and hasattr(reg_m3.coef_[0], "__getitem__") else float(reg_m3.coef_[0]) if hasattr(reg_m3.coef_, "__getitem__") else float(reg_m3.coef_)
+    drift_m3 = float(reg_m3.coef_)
     st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
     st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
     if m3_rise > 2.0:
@@ -179,7 +193,7 @@ if len(v_m4) > 0:
     m4_rise = float(row['M4_Rise'])
     m4_brix = float(row['M4_Brix']) if pd.notna(row['M4_Brix']) else 0.0
     reg_m4 = LinearRegression().fit(v_m4['Timeline_Step'].values.reshape(-1, 1), v_m4['M4_Rise'].values.reshape(-1, 1))
-    drift_m4 = float(reg_m4.coef_[0][0]) if hasattr(reg_m4.coef_, "__getitem__") and hasattr(reg_m4.coef_[0], "__getitem__") else float(reg_m4.coef_[0]) if hasattr(reg_m4.coef_, "__getitem__") else float(reg_m4.coef_)
+    drift_m4 = float(reg_m4.coef_)
     st.metric(label="C-BMA 4 Purity Rise", value=f"{m4_rise:.2f} units", delta=f"{drift_m4:+.3f} / shift" if drift_m4 != 0 else None)
     st.text(f"Molasses Density: {m4_brix:.1f}°Bx")
     if m4_rise > 2.0:
@@ -189,12 +203,4 @@ if len(v_m4) > 0:
     else: st.success("✅ C-BMA 4 Performance Stable")
 else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
-# --- MASTER CHART MATRIX PREPARATION (ZERO-LOOP FORECAST EXTRAPOLATION) ---
-chart_output['C-BMA 1 (History)'] = pd.Series(df['M1_Rise'].values, index=range(1, len(df)+1))
-chart_output['C-BMA 3 (History)'] = pd.Series(df['M3_Rise'].values, index=range(1, len(df)+1))
-chart_output['C-BMA 4 (History)'] = pd.Series(df['M4_Rise'].values, index=range(1, len(df)+1))
-
-# Unroll Machine 1 Predictions Flatly with clean array indexing extraction keys
-p1 = [np.nan] * (len(df) + 5)
-if reg_m1 is not None and len(df) > 0:
-    p1[len(df)-1] = float(df['M1_Rise'].dropna().values[-1])
+# --- MASTER CHART MATRIX PREPARATION ---
