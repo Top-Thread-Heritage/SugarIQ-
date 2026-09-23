@@ -133,11 +133,7 @@ for m_name, m_code in config_map.items():
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
 if all_active_high:
-    st.error(
-        f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**\n\n"
-        f"**Diagnosis:** All running centrifugals show excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or reheater settings.\n\n"
-        f"🏆 **Worst Performing Unit:** **{worst_machine_name}** is struggling the most with an extreme purity rise of **{max_purity_rise:.2f} units**."
-    )
+    st.error(f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**\\n\\n**Diagnosis:** All running centrifugals show excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or reheater settings.\\n\\n🏆 **Worst Performing Unit:** **{worst_machine_name}** is struggling the most with an extreme purity rise of **{max_purity_rise:.2f} units**.")
     st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
@@ -154,8 +150,11 @@ machine_cards = st.columns(4)
 for idx, (m_name, m_code) in enumerate(config_map.items()):
     with machine_cards[idx]:
         st.subheader(m_name)
+        
+        # Offline display layout
         if pd.isna(latest_valid_row[f'{m_code}_Rise']):
-            st.error("❌ MACHINE OFFLINE\n\nStatus: Prolonged breakdown logged.")
+            st.error("❌ MACHINE OFFLINE")
+            st.caption("Status: Prolonged breakdown logged.")
             continue
             
         m_rise = float(latest_valid_row[f'{m_code}_Rise'])
@@ -171,23 +170,26 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             X_time = np.array(range(len(m_history))).reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
-            drift_velocity = float(reg.coef_[0][0]) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_[0]) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
+            drift_velocity = float(reg.coef_) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
             
         st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / run" if drift_velocity != 0 else None)
         st.text(f"Molasses Density: {m_brix_val:.1f}°Bx" if m_brix_val > 0 else "Density: N/A")
         
-        if m_rise > 2.0:
+        # Completely flattened insights with absolutely NO indented inner branches
+        is_breached = m_rise > 2.0
+        is_low_brix = m_brix_val < 82.0 and m_brix_val > 0
+        
+        if is_breached:
             st.error("🚨 Threshold Breached")
-            if m_brix_val < 82.0 and m_brix_val > 0:
-                st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
-            else:
-                st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
-        else:
-            if drift_velocity > 0:
-                runs_left = (2.0 - m_rise) / drift_velocity
-                st.warning(f"⚠️ Life Remaining: {runs_left:.1f} runs.")
-            else:
-                st.success("✅ Performance Stable")
+        if is_breached and is_low_brix:
+            st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
+        if is_breached and not is_low_brix:
+            st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
+        if not is_breached and drift_velocity > 0:
+            runs_left = (2.0 - m_rise) / drift_velocity
+            st.warning(f"⚠️ Life Remaining: {runs_left:.1f} runs.")
+        if not is_breached and not drift_velocity > 0:
+            st.success("✅ Performance Stable")
 
 # --- HISTORICAL GRAPH TRENDS SECTION WITH PROTECTION ---
 st.markdown("### 📈 Long-Term Historical Performance Trends (Weeks 1-22)")
@@ -195,13 +197,5 @@ try:
     trend_data = df.copy()
     trend_data['Week No.'] = pd.to_numeric(trend_data['Week No.'], errors='coerce')
     trend_data = trend_data.dropna(subset=['Week No.'])
-    
     for mc in ['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']:
         trend_data[mc] = pd.to_numeric(trend_data[mc], errors='coerce')
-        
-    trend_summary = trend_data.groupby(['Week No.'])[['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']].mean()
-    trend_summary.columns = ['C-BMA 1 Rise', 'C-BMA 2 Rise', 'C-BMA 3 Rise', 'C-BMA 4 Rise']
-    
-    if not trend_summary.empty:
-        st.line_chart(trend_summary)
-    else:
