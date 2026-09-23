@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-# Page Configuration for Mobile and Desktop Viewports
+# Page Configuration for Mobile Viewports
 st.set_page_config(page_title="Sugar IQ Control Panel", layout="wide")
 st.title("Sugar IQ: C-Centrifugal Predictive Analyzer")
 st.markdown("Target Overall Final Molasses Purity: **37%** | Individual Machine Target Purity Rise: **2.0 Units**")
@@ -102,11 +102,13 @@ if error_msg:
     st.error(f"❌ Core processing error: {error_msg}")
     st.stop()
 
-# Ensure rows match clean numerical week format values safely
 df = df.dropna(subset=['Week No.']).copy()
-v_m1 = df.dropna(subset=['M1_Rise'])
-v_m3 = df.dropna(subset=['M3_Rise'])
-v_m4 = df.dropna(subset=['M4_Rise'])
+df['Timeline_Step'] = np.arange(len(df)) + 1
+
+# Safe variables isolation
+v_m1 = df.dropna(subset=['M1_Rise', 'Week No.'])
+v_m3 = df.dropna(subset=['M3_Rise', 'Week No.'])
+v_m4 = df.dropna(subset=['M4_Rise', 'Week No.'])
 v_comp = df.dropna(subset=['Overall_FMP'])
 
 current_fmp = float(v_comp.iloc[-1]['Overall_FMP']) if len(v_comp) > 0 else 37.0
@@ -189,16 +191,16 @@ else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
 
 # ============================================================================
-# --- CHART 1: CLEAN HISTORICAL REC-WEEK DATA PANEL ---
+# --- UNIFIED BOARDROOM GRAPH: HISTORICAL TIMELINE + ML PROJECTIONS ---
 # ============================================================================
-st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
+st.markdown("### 📈 Machine Learning Projections & Long-Term Trend Analyzer")
 
-# Calculate strict weekly averages to match your seasonal timeline perfectly
+# 1. Aggregate our actual historical performance summary cleanly by Week
 hist_summary = df.groupby(['Week No.'])[['M1_Rise', 'M3_Rise', 'M4_Rise']].mean()
-hist_summary.columns = ['C-BMA 1 Purity Rise', 'C-BMA 3 Purity Rise', 'C-BMA 4 Purity Rise']
-st.line_chart(hist_summary)
 
+# 2. Build the future timeline dataframe securely from Week 1 all the way out to Week 25
+full_weeks_index = list(range(1, 26))
+master_chart_df = pd.DataFrame(index=full_weeks_index)
 
-# ============================================================================
-# --- CHART 2: ISOLATED 3-WEEK FORECAST EXTENSION GRID ---
-# ============================================================================
+# 3. Inject the actual 22-week solid line historical background vectors
+master_chart_df['C-BMA 1 (Actual History)'] = hist_summary['M1_Rise']
