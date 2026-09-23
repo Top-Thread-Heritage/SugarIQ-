@@ -62,7 +62,6 @@ def process_sugar_iq_workbook(file_path):
         m3_sheet = find_sheet_by_keyword("no 3", 2)               
         m4_sheet = find_sheet_by_keyword("number 4", 3)               
 
-        # Load sheets cleanly
         nutsch_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=nutsch_sheet))
         composite_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=composite_sheet))
         m1_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet))
@@ -70,7 +69,6 @@ def process_sugar_iq_workbook(file_path):
         m3_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet))
         m4_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet))
         
-        # Enforce clean numbers on structural sorting variables
         for frame in [nutsch_df, composite_df, m1_df, m2_df, m3_df, m4_df]:
             frame['Week No.'] = force_numeric(frame['Week No.'])
             frame['Day No.'] = force_numeric(frame['Day No.'])
@@ -79,7 +77,6 @@ def process_sugar_iq_workbook(file_path):
             if 'Brix Nirs' in frame.columns:
                 frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
 
-        # Aggregate averages by Week and Day to bypass missing gaps safely
         nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
         
@@ -105,7 +102,6 @@ if error_msg:
     st.error(f"❌ Core processing error: {error_msg}")
     st.stop()
 
-# Generate a continuous baseline timeline for smooth machine learning curves
 df = df.dropna(subset=['Week No.']).copy()
 df['Timeline_Step'] = np.arange(len(df)) + 1
 
@@ -128,7 +124,6 @@ for m_name, m_code in config_map.items():
 
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
-# --- 2. GLOBAL STATION CRITICAL ALERT ---
 if all_active_high:
     st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
     st.warning("**Diagnosis:** All running centrifugals show an excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or crystallizer reheater settings rather than local screen damage.")
@@ -159,13 +154,15 @@ m1_history = df.dropna(subset=['M1_Rise', 'Timeline_Step']).copy()
 m1_rise = float(m1_rise_val) if pd.notna(m1_rise_val) else 0.0
 m1_brix = float(m1_brix_val) if pd.notna(m1_brix_val) else 0.0
 
+drift_m1 = -0.005
 if len(m1_history) >= 2:
-    reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
-    drift_m1 = float(reg_m1.coef_[0][0])
-else:
-    drift_m1 = -0.005
+    try:
+        reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
+        drift_m1 = float(reg_m1.coef_)
+    except:
+        pass
 
-st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
+st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != -0.005 else None)
 st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
 if m1_rise > 2.0: st.error("🚨 C-BMA 1 Threshold Breached")
 if m1_rise > 2.0 and m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator (M1):** Over-washing melting sugar. Taper manual water valves.")
@@ -178,9 +175,12 @@ m1_pred_arr = [np.nan] * len(chart_index_flat)
 for idx_r, row_r in df.iterrows():
     m1_hist_arr[int(row_r['Timeline_Step']) - 1] = float(row_r['M1_Rise']) if pd.notna(row_r['M1_Rise']) else np.nan
 if reg_m1 is not None and pd.notna(m1_hist_arr[len(df) - 1]):
-    m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
-    for fs in list(range(len(df) + 1, len(df) + 6)):
-        m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))[0][0]))
+    try:
+        m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
+        for fs in list(range(len(df) + 1, len(df) + 6)):
+            m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))))
+    except:
+        pass
 chart_output['C-BMA 1 (History)'] = m1_hist_arr
 chart_output['C-BMA 1 (ML Projection)'] = m1_pred_arr
 
@@ -202,10 +202,14 @@ m3_history = df.dropna(subset=['M3_Rise', 'Timeline_Step']).copy()
 m3_rise = float(m3_rise_val) if pd.notna(m3_rise_val) else 0.0
 m3_brix = float(m3_brix_val) if pd.notna(m3_brix_val) else 0.0
 
+drift_m3 = -0.005
 if len(m3_history) >= 2:
-    reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
-    drift_m3 = float(reg_m3.coef_[0][0])
-else:
-    drift_m3 = -0.005
+    try:
+        reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
+        drift_m3 = float(reg_m3.coef_)
+    except:
+        pass
 
-st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
+st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != -0.005 else None)
+st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
+if m3_rise > 2.0: st.error("🚨 C-BMA 3 Threshold Breached")
