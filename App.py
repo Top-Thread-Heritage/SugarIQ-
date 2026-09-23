@@ -160,7 +160,10 @@ if pd.notna(m1_rise_val) and len(m1_history) >= 3:
     m1_rise = float(m1_rise_val)
     m1_brix = float(m1_brix_val) if pd.notna(m1_brix_val) else 0.0
     reg_m1 = LinearRegression().fit(m1_history['Timeline_Step'].values.reshape(-1, 1), m1_history['M1_Rise'].values.reshape(-1, 1))
-    drift_m1 = float(reg_m1.coef_)
+    
+    # GUARANTEED 2D MATRIX EXTRACTION FIX
+    drift_m1 = float(reg_m1.coef_[0][0])
+    
     st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != 0 else None)
     st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
     if m1_rise > 2.0: st.error("🚨 C-BMA 1 Threshold Breached")
@@ -178,7 +181,7 @@ for idx_r, row_r in df.iterrows():
 if reg_m1 is not None and pd.notna(m1_hist_arr[len(df) - 1]):
     m1_pred_arr[len(df) - 1] = m1_hist_arr[len(df) - 1]
     for fs in list(range(len(df) + 1, len(df) + 6)):
-        m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))))
+        m1_pred_arr[fs - 1] = max(0.0, float(reg_m1.predict(np.array([[fs]]))[0][0]))
 chart_output['C-BMA 1 (History)'] = m1_hist_arr
 chart_output['C-BMA 1 (ML Projection)'] = m1_pred_arr
 
@@ -201,7 +204,9 @@ if pd.notna(m3_rise_val) and len(m3_history) >= 3:
     m3_rise = float(m3_rise_val)
     m3_brix = float(m3_brix_val) if pd.notna(m3_brix_val) else 0.0
     reg_m3 = LinearRegression().fit(m3_history['Timeline_Step'].values.reshape(-1, 1), m3_history['M3_Rise'].values.reshape(-1, 1))
-    drift_m3 = float(reg_m3.coef_)
+    
+    # GUARANTEED 2D MATRIX EXTRACTION FIX
+    drift_m3 = float(reg_m3.coef_[0][0])
+    
     st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != 0 else None)
     st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
-    if m3_rise > 2.0: st.error("🚨 C-BMA 3 Threshold Breached")
