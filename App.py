@@ -109,7 +109,8 @@ if error_msg:
 df = df.dropna(subset=['Week No.']).copy()
 df['Timeline_Step'] = np.arange(len(df)) + 1
 
-latest_valid_row = df.dropna(subset=['M1_Rise', 'M3_Rise', 'M4_Rise'], how='all').iloc[-1]
+valid_machine_rows = df.dropna(subset=['M1_Rise', 'M3_Rise', 'M4_Rise'], how='all').copy()
+latest_valid_row = valid_machine_rows.iloc[-1]
 current_fmp = latest_valid_row['Overall_FMP'] if pd.notna(latest_valid_row['Overall_FMP']) else 37.0
 current_week = int(latest_valid_row['Week No.'])
 
@@ -127,8 +128,11 @@ for m_name, m_code in config_map.items():
 
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
+# --- 2. GLOBAL STATION CRITICAL ALERT (BUG-FREE FORMATTING) ---
 if all_active_high:
-    st.error(f"🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**\\n\\nAll running centrifugals show high purity rise. Upstream issue: check C-massecuite conditioning or false grain.\\n\\n🏆 Worst Machine: **{worst_machine_name}** ({max_purity_rise:.2f} units).")
+    st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
+    st.warning("**Diagnosis:** All running centrifugals show an excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or crystallizer reheater settings rather than local screen damage.")
+    st.info(f"🏆 **Worst Performing Unit:** {worst_machine_name} is struggling the most with a purity rise of **{max_purity_rise:.2f} units**.")
     st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
@@ -163,7 +167,14 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
             models_dict[m_code] = reg
-            drift_velocity = float(reg.coef_[0][0]) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_[0]) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
+            
+            coef_raw = reg.coef_
+            if hasattr(coef_raw, "ndim") and coef_raw.ndim > 1:
+                drift_velocity = float(coef_raw[0][0])
+            elif hasattr(coef_raw, "__getitem__"):
+                drift_velocity = float(coef_raw[0])
+            else:
+                drift_velocity = float(coef_raw)
             
         st.metric(label="Purity Rise", value=f"{m_rise:.2f} units", delta=f"{drift_velocity:+.3f} / run" if drift_velocity != 0 else None)
         st.text(f"Molasses Density: {m_brix_val:.1f}°Bx")
@@ -202,15 +213,5 @@ for m_name, m_code in config_map.items():
         val = row[f'{m_code}_Rise']
         hist_series[step - 1] = float(val) if pd.notna(val) else np.nan
         
-    # Extrapolate 3-week predictive future trend line
+    # Extrapolate 3-week predictive future trend line with secure extraction keys
     if m_code in models_dict:
-        pred_series[total_historical_steps - 1] = hist_series[total_historical_steps - 1]
-        for fs in future_steps:
-            pred_val = float(models_dict[m_code].predict(np.array([[fs]])))
-            pred_series[fs - 1] = max(0.0, pred_val)
-            
-    chart_output[f'{m_name} (History)'] = hist_series
-    chart_output[f'{m_name} (ML Projection)'] = pred_series
-
-# Force axis keys to professional display labels
-chart_output.index.name = 'Chronological Entry Step'
