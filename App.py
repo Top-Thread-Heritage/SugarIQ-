@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-# Page Configuration for Mobile and Desktop Viewports
+# Page Configuration for Mobile Viewports
 st.set_page_config(page_title="Sugar IQ Control Panel", layout="wide")
 st.title("Sugar IQ: C-Centrifugal Predictive Analyzer")
 st.markdown("Target Overall Final Molasses Purity: **37%** | Individual Machine Target Purity Rise: **2.0 Units**")
@@ -131,7 +131,6 @@ if all_active_high:
     st.error("🚨 **GLOBAL STATION ALERT: PROCESS DRIFT DETECTED**")
     st.warning("**Diagnosis:** All running centrifugals show an excessive purity rise simultaneously. Fault isolated upstream to **C-massecuite quality** or crystallizer reheater settings rather than local screen damage.")
     st.info(f"🏆 **Worst Performing Unit:** {worst_machine_name} is struggling the most with a purity rise of **{max_purity_rise:.2f} units**.")
-    st.markdown("---")
 
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
@@ -168,7 +167,6 @@ if len(m1_history) >= 2:
 st.metric(label="C-BMA 1 Purity Rise", value=f"{m1_rise:.2f} units", delta=f"{drift_m1:+.3f} / shift" if drift_m1 != -0.005 else None)
 st.text(f"Molasses Density: {m1_brix:.1f}°Bx")
 
-# Unconditional recommendations display
 if m1_rise > 2.0:
     st.error("🚨 C-BMA 1 Threshold Breached")
     st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
@@ -190,14 +188,10 @@ if reg_m1 is not None and pd.notna(m1_hist_arr[len(df) - 1]):
 chart_output['C-BMA 1 (History)'] = m1_hist_arr
 chart_output['C-BMA 1 (ML Projection)'] = m1_pred_arr
 
-st.markdown("---")
-
 # --- C-BMA 2 ---
 st.markdown("#### **C-BMA 2**")
 st.error("❌ MACHINE OFFLINE")
 st.caption("Status: Prolonged breakdown logged.")
-
-st.markdown("---")
 
 # --- C-BMA 3 ---
 st.markdown("#### **C-BMA 3**")
@@ -219,7 +213,10 @@ if len(m3_history) >= 2:
 st.metric(label="C-BMA 3 Purity Rise", value=f"{m3_rise:.2f} units", delta=f"{drift_m3:+.3f} / shift" if drift_m3 != -0.005 else None)
 st.text(f"Molasses Density: {m3_brix:.1f}°Bx")
 
-# Unconditional recommendations display
 if m3_rise > 2.0:
     st.error("🚨 C-BMA 3 Threshold Breached")
     st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
+    st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
+else:
+    st.success("✅ C-BMA 3 Performance Stable")
+
