@@ -75,7 +75,7 @@ def process_sugar_iq_workbook(file_path):
         
         m1_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m1_sheet)))
         m2_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m2_sheet)))
-        m3_df = add_sequence_index = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
+        m3_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet)))
         m4_df = add_positional_sequence_index(clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet)))
                 
         nutsch_base = nutsch_df[['Week No.', 'Day No.', 'Daily_Sequence_Order', 'Purity Nirs']].rename(columns={'Purity Nirs': 'Nutsch_Pur'})
