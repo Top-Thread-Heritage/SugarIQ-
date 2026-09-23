@@ -37,18 +37,15 @@ st.markdown(
 )
 
 def clean_dataframe_columns(df):
-    """Trims trailing spaces from column names to prevent alignment errors."""
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
 def add_positional_sequence_index(df):
-    """Creates a sequential order index based strictly on row positions."""
     if 'Week No.' in df.columns and 'Day No.' in df.columns:
         df['Daily_Sequence_Order'] = df.groupby(['Week No.', 'Day No.']).cumcount()
     return df
 
 def force_numeric(series):
-    """Safely converts any text dashes, spaces, or N/As into clean numbers or NaN."""
     return pd.to_numeric(series, errors='coerce')
 
 def process_sugar_iq_workbook(file_path):
@@ -63,7 +60,6 @@ def process_sugar_iq_workbook(file_path):
                     return sheet
             return actual_sheets[fallback_index]
 
-        # Smart keyword matching to locate your tabs flexibly
         nutsch_sheet = find_sheet_by_keyword("nutsch", 2)      
         composite_sheet = find_sheet_by_keyword("hour", 1)   
         m1_sheet = find_sheet_by_keyword("no 1", 0)               
@@ -96,7 +92,6 @@ def process_sugar_iq_workbook(file_path):
             master['Nutsch_Pur'] = force_numeric(master['Nutsch_Pur'])
             master['Overall_FMP'] = force_numeric(master['Overall_FMP'])
             
-            # Purity Rise Calculation
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
             
         master = master.sort_values(by=['Week No.', 'Day No.', 'Daily_Sequence_Order']).reset_index(drop=True)
@@ -114,7 +109,6 @@ except FileNotFoundError:
     st.error("❌ Data Source Missing: Please ensure 'factory_data.xlsx' is in your repo.")
     st.stop()
 
-# Filter active rows safely
 valid_machine_rows = df.dropna(subset=['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise'], how='all')
 if len(valid_machine_rows) == 0:
     st.error("❌ No overlapping valid numerical records found. Please check columns.")
@@ -124,12 +118,10 @@ latest_valid_row = valid_machine_rows.iloc[-1]
 current_fmp = latest_valid_row['Overall_FMP'] if not pd.isna(latest_valid_row['Overall_FMP']) else df.dropna(subset=['Overall_FMP']).iloc[-1]['Overall_FMP']
 current_week = int(latest_valid_row['Week No.'])
 
-# Corrected mapping configurations
 config_map = {'C-BMA 1': 'M1', 'C-BMA 2': 'M2', 'C-BMA 3': 'M3', 'C-BMA 4': 'M4'}
 active_on_floor = [m_code for m_name, m_code in config_map.items() if not pd.isna(latest_valid_row[f'{m_code}_Rise'])]
 
-# Find the worst performing active unit
-worst_machine_name = None
+worst_machine_name = "None"
 max_purity_rise = -999.0
 for m_name, m_code in config_map.items():
     if m_code in active_on_floor:
@@ -138,7 +130,6 @@ for m_name, m_code in config_map.items():
             max_purity_rise = float(val)
             worst_machine_name = m_name
 
-# --- GLOBAL STATION ALERT ---
 all_active_high = all(latest_valid_row[f'{m}_Rise'] > 2.0 for m in active_on_floor) if len(active_on_floor) > 0 else False
 
 if all_active_high:
@@ -149,7 +140,6 @@ if all_active_high:
     )
     st.markdown("---")
 
-# --- EXECUTIVE SUMMARY LAYER ---
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1:
     st.metric(label="Current Composite FMP", value=f"{current_fmp:.2f} %" if pd.notna(current_fmp) else "N/A")
@@ -158,7 +148,6 @@ with kpi2:
 with kpi3:
     st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22")
 
-# --- PROGNOSTIC INDIVIDUAL SECTIONS ---
 st.markdown("### 🔮 Machine-Specific Predictive Analysis")
 machine_cards = st.columns(4)
 
@@ -173,7 +162,6 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
         m_brix = latest_valid_row[f'{m_code}_Brix']
         m_brix_val = float(m_brix) if pd.notna(m_brix) else 0.0
         
-        # Isolate history cleanly for ML model fitting
         m_history = df.dropna(subset=[f'{m_code}_Rise']).copy()
         m_history[f'{m_code}_Rise'] = force_numeric(m_history[f'{m_code}_Rise'])
         m_history = m_history[np.isfinite(m_history[f'{m_code}_Rise'])]
@@ -182,7 +170,7 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             X_time = np.array(range(len(m_history))).reshape(-1, 1)
             y_rise = m_history[f'{m_code}_Rise'].values.reshape(-1, 1)
             reg = LinearRegression().fit(X_time, y_rise)
-            drift_velocity = float(reg.coef_[0][0]) if isinstance(reg.coef_, np.ndarray) and reg.coef_.ndim > 1 else float(reg.coef_[0]) if isinstance(reg.coef_, np.ndarray) else float(reg.coef_)
+            drift_velocity = float(reg.coef_[0][0]) if hasattr(reg.coef_, "ndim") and reg.coef_.ndim > 1 else float(reg.coef_[0]) if hasattr(reg.coef_, "__getitem__") else float(reg.coef_)
         else:
             drift_velocity = 0.0
             
@@ -194,12 +182,27 @@ for idx, (m_name, m_code) in enumerate(config_map.items()):
             if m_brix_val < 82.0 and m_brix_val > 0:
                 st.warning("👉 **Operator:** Over-washing melting sugar. Taper manual water valves.")
             else:
-                st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect for tears immediately.")
+                st.warning("👉 **Foreman:** Mechanical screen bypass. Inspect screens immediately.")
         else:
             if drift_velocity > 0:
                 runs_left = (2.0 - m_rise) / drift_velocity
-                if runs_left < 6:
-                    st.warning(f"⚠️ Warning\nScreen breach projected in {runs_left:.1f} runs.")
-                else:
-                    st.success(f"✅ Stable\nLife: {runs_left:.1f} runs.")
+                st.warning(f"⚠️ Life Remaining: {runs_left:.1f} runs.")
             else:
+                st.success("✅ Performance Stable")
+
+# --- HISTORICAL GRAPH TRENDS SECTION WITH PROTECTION ---
+st.markdown("### 📈 Long-Term Historical Performance Trends (Weeks 1-22)")
+try:
+    trend_data = df.copy()
+    trend_data['Week No.'] = pd.to_numeric(trend_data['Week No.'], errors='coerce')
+    trend_data = trend_data.dropna(subset=['Week No.'])
+    
+    for mc in ['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']:
+        trend_data[mc] = pd.to_numeric(trend_data[mc], errors='coerce')
+        
+    trend_summary = trend_data.groupby(['Week No.'])[['M1_Rise', 'M2_Rise', 'M3_Rise', 'M4_Rise']].mean()
+    trend_summary.columns = ['C-BMA 1 Rise', 'C-BMA 2 Rise', 'C-BMA 3 Rise', 'C-BMA 4 Rise']
+    
+    if not trend_summary.empty:
+        st.line_chart(trend_summary)
+    else:
