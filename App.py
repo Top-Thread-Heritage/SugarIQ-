@@ -114,7 +114,6 @@ v_comp = df.dropna(subset=['Overall_FMP'])
 current_fmp = float(v_comp.iloc[-1]['Overall_FMP']) if len(v_comp) > 0 else 37.0
 current_week = int(v_comp.iloc[-1]['Week No.']) if len(v_comp) > 0 else 22
 
-# Compute operational units baseline dynamically
 active_count = 0
 if len(v_m1) > 0: active_count += 1
 if len(v_m3) > 0: active_count += 1
@@ -145,7 +144,7 @@ if len(v_m1) > 0:
         st.error("🚨 C-BMA 1 Threshold Breached")
         st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
         st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
-    else: st.success("USA ✅ C-BMA 1 Performance Stable")
+    else: st.success("✅ C-BMA 1 Performance Stable")
 else: st.error("❌ C-BMA 1 DATA OFFLINE")
 
 # --- C-BMA 2 ---
@@ -190,26 +189,23 @@ if len(v_m4) > 0:
     else: st.success("✅ C-BMA 4 Performance Stable")
 else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
-# --- DYNAMIC MATRIX CHART LAYER ---
+# --- MASTER CHART MATRIX PREPARATION (ZERO-LOOP FORECAST EXTRAPOLATION) ---
 chart_output['C-BMA 1 (History)'] = pd.Series(df['M1_Rise'].values, index=range(1, len(df)+1))
 chart_output['C-BMA 3 (History)'] = pd.Series(df['M3_Rise'].values, index=range(1, len(df)+1))
 chart_output['C-BMA 4 (History)'] = pd.Series(df['M4_Rise'].values, index=range(1, len(df)+1))
 
-try:
-    p1 = [np.nan] * (len(df) + 5)
-    p1[len(df)-1] = df['M1_Rise'].dropna().values[-1]
-    for s in range(len(df) + 1, len(df) + 6): p1[s-1] = max(0.0, float(reg_m1.predict([[s]])))
-    chart_output['C-BMA 1 (ML Projection)'] = pd.Series(p1, index=chart_index_flat)
-except: pass
+# Unroll Machine 1 Predictions Flatly
+p1 = [np.nan] * (len(df) + 5)
+if reg_m1 is not None and len(df) > 0:
+    p1[len(df)-1] = float(df['M1_Rise'].dropna().values[-1])
+    p1[len(df)] = max(0.0, float(reg_m1.predict([[len(df) + 1]])))
+    p1[len(df)+1] = max(0.0, float(reg_m1.predict([[len(df) + 2]])))
+    p1[len(df)+2] = max(0.0, float(reg_m1.predict([[len(df) + 3]])))
+    p1[len(df)+3] = max(0.0, float(reg_m1.predict([[len(df) + 4]])))
+    p1[len(df)+4] = max(0.0, float(reg_m1.predict([[len(df) + 5]])))
+chart_output['C-BMA 1 (ML Projection)'] = pd.Series(p1, index=chart_index_flat)
 
-try:
-    p3 = [np.nan] * (len(df) + 5)
-    p3[len(df)-1] = df['M3_Rise'].dropna().values[-1]
-    for s in range(len(df) + 1, len(df) + 6): p3[s-1] = max(0.0, float(reg_m3.predict([[s]])))
-    chart_output['C-BMA 3 (ML Projection)'] = pd.Series(p3, index=chart_index_flat)
-except: pass
-
-try:
-    p4 = [np.nan] * (len(df) + 5)
-    p4[len(df)-1] = df['M4_Rise'].dropna().values[-1]
-    for s in range(len(df) + 1, len(df) + 6): p4[s-1] = max(0.0, float(reg_m4.predict([[s]])))
+# Unroll Machine 3 Predictions Flatly
+p3 = [np.nan] * (len(df) + 5)
+if reg_m3 is not None and len(df) > 0:
+    p3[len(df)-1] = float(df['M3_Rise'].dropna().values[-1])
