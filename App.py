@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-# Page Configuration for Mobile Viewports
+# Page Configuration for Mobile and Desktop Viewports
 st.set_page_config(page_title="Sugar IQ Control Panel", layout="wide")
 st.title("Sugar IQ: C-Centrifugal Predictive Analyzer")
 st.markdown("Target Overall Final Molasses Purity: **37%** | Individual Machine Target Purity Rise: **2.0 Units**")
@@ -102,10 +102,8 @@ if error_msg:
     st.error(f"❌ Core processing error: {error_msg}")
     st.stop()
 
+# Ensure rows match clean numerical week format values safely
 df = df.dropna(subset=['Week No.']).copy()
-df['Timeline_Step'] = np.arange(len(df)) + 1
-
-# Safe variables isolation
 v_m1 = df.dropna(subset=['M1_Rise'])
 v_m3 = df.dropna(subset=['M3_Rise'])
 v_m4 = df.dropna(subset=['M4_Rise'])
@@ -114,7 +112,7 @@ v_comp = df.dropna(subset=['Overall_FMP'])
 current_fmp = float(v_comp.iloc[-1]['Overall_FMP']) if len(v_comp) > 0 else 37.0
 current_week = int(v_comp.iloc[-1]['Week No.']) if len(v_comp) > 0 else 22
 
-# Quick data metrics rendering
+# Quick data metrics calculation
 m1_last_rise = float(v_m1.iloc[-1]['M1_Rise']) if len(v_m1) > 0 else 0.0
 m3_last_rise = float(v_m3.iloc[-1]['M3_Rise']) if len(v_m3) > 0 else 0.0
 m4_last_rise = float(v_m4.iloc[-1]['M4_Rise']) if len(v_m4) > 0 else 0.0
@@ -189,17 +187,18 @@ if len(v_m4) > 0:
     else: st.success("✅ C-BMA 4 Performance Stable")
 else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
-# ============================================================================
-# --- CHART 1: STRICT 22-WEEK HISTORICAL RECOVERY TREND ENGINE ---
-# ============================================================================
-st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
-hist_output = pd.DataFrame(index=range(1, len(df)+1))
-hist_output['C-BMA 1 Actual Rise'] = df['M1_Rise'].values
-hist_output['C-BMA 3 Actual Rise'] = df['M3_Rise'].values
-hist_output['C-BMA 4 Actual Rise'] = df['M4_Rise'].values
-hist_output.index.name = 'Chronological Entry Step'
-st.line_chart(hist_output)
 
 # ============================================================================
-# --- CHART 2: ISOLATED PREDICITIVE EXTENSION TRAILS ENGINE ---
+# --- CHART 1: CLEAN HISTORICAL REC-WEEK DATA PANEL ---
+# ============================================================================
+st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
+
+# Calculate strict weekly averages to match your seasonal timeline perfectly
+hist_summary = df.groupby(['Week No.'])[['M1_Rise', 'M3_Rise', 'M4_Rise']].mean()
+hist_summary.columns = ['C-BMA 1 Purity Rise', 'C-BMA 3 Purity Rise', 'C-BMA 4 Purity Rise']
+st.line_chart(hist_summary)
+
+
+# ============================================================================
+# --- CHART 2: ISOLATED 3-WEEK FORECAST EXTENSION GRID ---
 # ============================================================================
