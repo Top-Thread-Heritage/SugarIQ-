@@ -196,7 +196,7 @@ else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
 
 # ============================================================================
-# --- CHART 1: CLEAN HISTORICAL REC-WEEK DATA PANEL ---
+# --- CHART 1: RESTORED HISTORICAL 22-WEEK DATA PANEL ---
 # ============================================================================
 st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
 
