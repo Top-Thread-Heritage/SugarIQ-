@@ -76,7 +76,7 @@ def process_sugar_iq_workbook(file_path):
             if 'Purity Nirs' in frame.columns: frame['Purity Nirs'] = force_numeric(frame['Purity Nirs'])
             if 'Brix Nirs' in frame.columns: frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
 
-        # Aggregate averages safely
+        # Aggregate averages by Week and Day safely
         nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
         
@@ -148,7 +148,7 @@ if len(v_m1) > 0:
         st.error("🚨 C-BMA 1 Threshold Breached")
         if m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
         else: st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
-    else: st.success("✅ C-BMA 1 Performance Stable")
+    else: st.success("USA ✅ C-BMA 1 Performance Stable")
 else: st.error("❌ C-BMA 1 DATA OFFLINE")
 
 # --- C-BMA 2 PANEL ---
@@ -200,8 +200,8 @@ st.line_chart(hist_summary)
 
 
 # ============================================================================
-# --- CHART 2: COMPACT STANDALONE FORECAST PANEL (BUG-FREE ARRAY FORMAT) ---
+# --- CHART 2: COMPACT STANDALONE FORECAST PANEL (NO BRACKETS LOOP SAFE) ---
 # ============================================================================
 st.markdown("### 🔮 Sugar IQ Forecast Horizon: 3-Week Predictive Analytics")
 
-# Hardcoded flat array indexing avoids missing-character string truncation entirely
+# Mathematically define index to prevent mobile formatting stripping
