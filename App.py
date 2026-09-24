@@ -69,14 +69,14 @@ def process_sugar_iq_workbook(file_path):
         m3_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet))
         m4_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet))
         
-        # Enforce clean numbers on structural sorting variables
+        # Enforce clean numbers on structural variables
         for frame in [nutsch_df, composite_df, m1_df, m2_df, m3_df, m4_df]:
             frame['Week No.'] = force_numeric(frame['Week No.'])
             frame['Day No.'] = force_numeric(frame['Day No.'])
             if 'Purity Nirs' in frame.columns: frame['Purity Nirs'] = force_numeric(frame['Purity Nirs'])
             if 'Brix Nirs' in frame.columns: frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
 
-        # Aggregate averages by Week and Day safely
+        # Aggregate averages safely
         nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
         comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
         
@@ -102,7 +102,6 @@ if error_msg:
     st.stop()
 
 df = df.dropna(subset=['Week No.']).copy()
-df['Timeline_Step'] = np.arange(len(df)) + 1
 
 # Safe variables isolation
 v_m1 = df.dropna(subset=['M1_Rise'])
@@ -190,19 +189,20 @@ else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
 
 # ============================================================================
-# --- INDESTRUCTIBLE UNIFIED PRESENATION TREND & PROJECTION ENGINE ---
+# --- CHART 1: CLEAN HISTORICAL REC-WEEK DATA PANEL ---
 # ============================================================================
-st.markdown("### 📈 Machine Learning Projections & Long-Term Trend Analyzer")
+st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
 
-# 1. Grab raw history grouped cleanly by factory week number
 hist_summary = df.groupby(['Week No.'])[['M1_Rise', 'M3_Rise', 'M4_Rise']].mean()
+hist_summary.columns = ['C-BMA 1 Historical Rise', 'C-BMA 3 Historical Rise', 'C-BMA 4 Historical Rise']
+hist_summary.index.name = 'Factory Operational Week Number'
+st.line_chart(hist_summary)
 
-# 2. Pre-configure full timeline indexes from Week 1 to Week 25 flatly (Zero loop bugs)
-full_timeline_weeks = list(range(1, 26))
-master_chart_df = pd.DataFrame(index=full_timeline_weeks)
 
-# 3. Securely map historical lines data arrays
-master_chart_df['C-BMA 1 (Actual History)'] = hist_summary['M1_Rise']
-master_chart_df['C-BMA 3 (Actual History)'] = hist_summary['M3_Rise']
-master_chart_df['C-BMA 4 (Actual History)'] = hist_summary['M4_Rise']
+# ============================================================================
+# --- CHART 2: COMPACT STANDALONE FORECAST PANEL (NO DATA GAPS) ---
+# ============================================================================
+st.markdown("### 🔮 Sugar IQ Forecast Horizon: 3-Week Predictive Analytics")
 
+# Create a clean, dedicated 4-row dataframe solely containing the future projection metrics
+future_weeks = [22, 23, 24, 25]
