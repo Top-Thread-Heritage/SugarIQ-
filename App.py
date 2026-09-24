@@ -73,19 +73,26 @@ def process_sugar_iq_workbook(file_path):
         for frame in [nutsch_df, composite_df, m1_df, m2_df, m3_df, m4_df]:
             frame['Week No.'] = force_numeric(frame['Week No.'])
             frame['Day No.'] = force_numeric(frame['Day No.'])
+            if 'Purity NIRS' in frame.columns: frame['Purity NIRS'] = force_numeric(frame['Purity NIRS'])
             if 'Purity Nirs' in frame.columns: frame['Purity Nirs'] = force_numeric(frame['Purity Nirs'])
             if 'Brix Nirs' in frame.columns: frame['Brix Nirs'] = force_numeric(frame['Brix Nirs'])
+            if 'Brix NIRS' in frame.columns: frame['Brix NIRS'] = force_numeric(frame['Brix NIRS'])
 
-        # Aggregate averages by Week and Day safely
-        nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Nutsch_Pur'})
-        comp_agg = composite_df.groupby(['Week No.', 'Day No.'])['Purity Nirs'].mean().reset_index().rename(columns={'Purity Nirs': 'Overall_FMP'})
+        # Aggregate averages safely
+        p_col = 'Purity Nirs' if 'Purity Nirs' in nutsch_df.columns else 'Purity NIRS'
+        nutsch_agg = nutsch_df.groupby(['Week No.', 'Day No.'])[p_col].mean().reset_index().rename(columns={p_col: 'Nutsch_Pur'})
+        
+        cp_col = 'Purity Nirs' if 'Purity Nirs' in composite_df.columns else 'Purity NIRS'
+        comp_agg = composite_df.groupby(['Week No.', 'Day No.'])[cp_col].mean().reset_index().rename(columns={cp_col: 'Overall_FMP'})
         
         master = pd.merge(nutsch_agg, comp_agg, on=['Week No.', 'Day No.'], how='outer')
         
         machines = {'M1': m1_df, 'M2': m2_df, 'M3': m3_df, 'M4': m4_df}
         for code, mdf in machines.items():
-            m_agg = mdf.groupby(['Week No.', 'Day No.'])[['Purity Nirs', 'Brix Nirs']].mean().reset_index().rename(
-                columns={'Purity Nirs': f'{code}_Pur', 'Brix Nirs': f'{code}_Brix'}
+            mp_col = 'Purity Nirs' if 'Purity Nirs' in mdf.columns else 'Purity NIRS'
+            mb_col = 'Brix Nirs' if 'Brix Nirs' in mdf.columns else 'Brix NIRS'
+            m_agg = mdf.groupby(['Week No.', 'Day No.'])[[mp_col, mb_col]].mean().reset_index().rename(
+                columns={mp_col: f'{code}_Pur', mb_col: f'{code}_Brix'}
             )
             master = pd.merge(master, m_agg, on=['Week No.', 'Day No.'], how='left')
             master[f'{code}_Rise'] = master[f'{code}_Pur'] - master['Nutsch_Pur']
@@ -195,13 +202,3 @@ st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
 
 hist_summary = df.groupby(['Week No.'])[['M1_Rise', 'M3_Rise', 'M4_Rise']].mean()
 hist_summary.columns = ['C-BMA 1 Historical Rise', 'C-BMA 3 Historical Rise', 'C-BMA 4 Historical Rise']
-hist_summary.index.name = 'Factory Operational Week Number'
-st.line_chart(hist_summary)
-
-
-# ============================================================================
-# --- CHART 2: COMPACT 1-WEEK PROJECTION MATRIX (ZERO SYNTAX BRACKETS) ---
-# ============================================================================
-st.markdown("### 🔮 Sugar IQ Forecast Horizon: 1-Week Predictive Horizon")
-
-# Using a standard clean string index map avoids column parsing bugs completely
