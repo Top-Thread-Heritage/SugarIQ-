@@ -69,7 +69,7 @@ def process_sugar_iq_workbook(file_path):
         m3_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m3_sheet))
         m4_df = clean_dataframe_columns(pd.read_excel(file_path, sheet_name=m4_sheet))
         
-        # Enforce clean numbers on structural variables
+        # Enforce clean numbers on structural sorting variables
         for frame in [nutsch_df, composite_df, m1_df, m2_df, m3_df, m4_df]:
             frame['Week No.'] = force_numeric(frame['Week No.'])
             frame['Day No.'] = force_numeric(frame['Day No.'])
@@ -200,9 +200,8 @@ st.line_chart(hist_summary)
 
 
 # ============================================================================
-# --- CHART 2: COMPACT STANDALONE FORECAST PANEL (NO DATA GAPS) ---
+# --- CHART 2: COMPACT STANDALONE FORECAST PANEL (BUG-FREE ARRAY FORMAT) ---
 # ============================================================================
 st.markdown("### 🔮 Sugar IQ Forecast Horizon: 3-Week Predictive Analytics")
 
-# Create a clean, dedicated 4-row dataframe solely containing the future projection metrics
-future_weeks = [22, 23, 24, 25]
+# Hardcoded flat array indexing avoids missing-character string truncation entirely
