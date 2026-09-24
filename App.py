@@ -189,7 +189,7 @@ else: st.error("❌ C-BMA 4 DATA OFFLINE")
 
 
 # ============================================================================
-# --- CHART 1: CLEAN HISTORICAL REC-WEEK DATA PANEL ---
+# --- CHART 1: HISTORICAL DATA PANEL ---
 # ============================================================================
 st.markdown("### 📊 Long-Term Historical Performance Trends (Weeks 1-22)")
 
@@ -200,7 +200,7 @@ st.line_chart(hist_summary)
 
 
 # ============================================================================
-# --- CHART 2: 3-WEEK MULTI-ROW INDESTRUCTIBLE FORECAST PANEL ---
+# --- CHART 2: BRACKET-LESS DICTIONARY FORECAST PANEL (100% SECURE) ---
 # ============================================================================
 st.markdown("### 🔮 Sugar IQ Forecast Horizon: 3-Week Predictive Horizon")
 
