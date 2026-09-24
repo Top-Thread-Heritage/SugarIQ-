@@ -200,7 +200,7 @@ st.line_chart(hist_summary)
 
 
 # ============================================================================
-# --- CHART 2: BRACKET-LESS DICTIONARY FORECAST PANEL (100% SECURE) ---
+# --- CHART 2: THE "WOW FACTOR" UNIFIED CONTINUOUS TIMELINE CHART ---
 # ============================================================================
-st.markdown("### 🔮 Sugar IQ Forecast Horizon: 3-Week Predictive Horizon")
+st.markdown("### 🔮 Machine Learning Projections & Long-Term Trend Analyzer (Weeks 1-25)")
 
