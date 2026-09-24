@@ -139,7 +139,7 @@ if all_active_high:
 
 kpi1, kpi2, kpi3 = st.columns(3)
 with kpi1: st.metric(label="Current Overall FMP", value=f"{current_fmp:.2f} %")
-with kpi2: st.metric(label="Active Centrifugals", value=f"{active_count} / 4 Online")
+with kpi2: st.metric(label="Active Centrifugals", value={active_count} / 4 Online)
 with kpi3: st.metric(label="Data Log Horizon", value=f"Week {current_week} / 22")
 
 st.markdown("### 🔮 Machine-Specific Real-Time Analysis")
