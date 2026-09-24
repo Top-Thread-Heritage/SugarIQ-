@@ -148,7 +148,7 @@ if len(v_m1) > 0:
         st.error("🚨 C-BMA 1 Threshold Breached")
         if m1_brix < 82.0 and m1_brix > 0: st.warning("👉 **Operator Action Plan:** Over-washing melting sugar. Taper manual water valves.")
         else: st.info("👉 **Foreman Maintenance Plan:** Schedule physical inspection for localized basket screen bypass.")
-    else: st.success("USA ✅ C-BMA 1 Performance Stable")
+    else: st.success("✅ C-BMA 1 Performance Stable")
 else: st.error("❌ C-BMA 1 DATA OFFLINE")
 
 # --- C-BMA 2 PANEL ---
@@ -200,8 +200,8 @@ st.line_chart(hist_summary)
 
 
 # ============================================================================
-# --- CHART 2: COMPACT STANDALONE FORECAST PANEL (NO BRACKETS LOOP SAFE) ---
+# --- CHART 2: COMPACT 1-WEEK PROJECTION MATRIX (ZERO SYNTAX BRACKETS) ---
 # ============================================================================
-st.markdown("### 🔮 Sugar IQ Forecast Horizon: 3-Week Predictive Analytics")
+st.markdown("### 🔮 Sugar IQ Forecast Horizon: 1-Week Predictive Horizon")
 
-# Mathematically define index to prevent mobile formatting stripping
+# Using a standard clean string index map avoids column parsing bugs completely
